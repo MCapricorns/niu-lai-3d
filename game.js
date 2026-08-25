@@ -610,7 +610,7 @@ defLevel(126,"4-3 曼巴火焰之路",3,function(g){
   g.leopard(110);
   g.flag(120);
 });
-defLevel(100,"4-4 牛模王的王座",3,function(g){
+defLevel(100,"4-4 Anthropic Dario",3,function(g){
   g.ground(0,99); g.startX=6;
   g.solid(4,0,14); g.solid(95,0,14);
   g.coinRow(14,10,3); g.q(20,8,1);
@@ -1307,7 +1307,7 @@ function startBossIntro(){
   GS.state="bossintro";
   musicStart(4);
   sWarn(); sHowl(); sNiuLai(); addShake(14); flash=0.7;
-  popText(86*T+55,12*T-122,"牛模王:把算力都给我!!","#ff2a9a");
+  popText(86*T+55,12*T-122,"Anthropic Dario:你的算力,归我了!!","#ff2a9a");
   GS.boss={x:86*T,y:12*T-84,w:110,h:84,vx:0,face:-1,state:"idle",t:0,hp:5,maxhp:5,stun:0,warn:0,hurt:0,atk:1.2,dead:false,phase:1,thrown:false};
   spawnBoss3D();
 }
@@ -1315,7 +1315,7 @@ function updateBoss(dt){
   var b=GS.boss,p=PL;
   if(!b) return;
   b.t+=dt; b.hurt=Math.max(0,b.hurt-dt);
-  if(b.hp<=2&&b.phase===1){ b.phase=2; popText(b.x+b.w/2,b.y-30,"牛模王:模型过载!!","#c05aff"); sWarn(); addShake(8); flash=0.6; }
+  if(b.hp<=2&&b.phase===1){ b.phase=2; popText(b.x+b.w/2,b.y-30,"Anthropic Dario:封你账号!!","#c05aff"); sWarn(); addShake(8); flash=0.6; }
   if(b.state==="idle"){
     b.face=(p.x>b.x)?1:-1;
     b.x=clamp(b.x+b.face*(b.phase===2?122:92)*dt,32*T,93*T-b.w); /* 别走出竞技场 */
@@ -1366,7 +1366,7 @@ function updateBoss(dt){
           b.hp--; b.hurt=1.2; b.state="idle"; b.atk=2.2;
           sBreak(); addShake(10); freeze=0.06;
           burst(b.x+b.w/2,b.y+30,"spark",14,300);
-          popText(b.x+b.w/2,b.y-16,b.hp>0?("牛模王 HP:"+b.hp):"牛模王 崩了!","#ff5a5a");
+          popText(b.x+b.w/2,b.y-16,b.hp>0?("Anthropic Dario HP:"+b.hp):"Anthropic Dario 崩了!","#ff5a5a");
           if(b.hp<=0){ defeatBoss(); }
         }
         p.vy=-560;
@@ -1378,7 +1378,7 @@ function updateBoss(dt){
         if(b.hurt<=0){
           b.hp--; b.hurt=1.2; b.state="idle"; b.atk=2.2;
           sBreak(); addShake(10); freeze=0.06;
-          popText(b.x+b.w/2,b.y-16,b.hp>0?("牛模王 HP:"+b.hp):"牛模王 崩了!","#ff5a5a");
+          popText(b.x+b.w/2,b.y-16,b.hp>0?("Anthropic Dario HP:"+b.hp):"Anthropic Dario 崩了!","#ff5a5a");
           burst(b.x+b.w/2,b.y+30,"spark",14,300);
           if(b.hp<=0){ defeatBoss(); }
         }
@@ -1914,39 +1914,63 @@ function buildBird(){
    Ox Alpha 模型成精:暗黑版巨型牛来
    发光红眼 · 悬浮算力方块环 · 二阶段过载红光 */
 function buildBoss(){
-  var g=buildCalf();
-  /* 全身暗黑化 */
-  g.traverse(function(o){
-    if(o.isMesh&&o.material&&o.material.color){
-      o.material=o.material.clone();
-      o.material.color.setHex(0x2c2c38);
-    }
-  });
-  /* 发光红眼(盖在原眼位置) */
-  var head=g.userData.head;
-  var em1=new THREE.MeshBasicMaterial({color:0xff3333});
-  var ge1=new THREE.Mesh(new THREE.SphereGeometry(0.1,8,6),em1);
-  ge1.userData.keepGlow=true; ge1.position.set(0.42,0.14,0.26); head.add(ge1);
-  var ge2=ge1.clone(); ge2.position.z=-0.26; head.add(ge2);
-  /* 角发光 */
-  g.traverse(function(o){
-    if(o.isMesh&&o.material&&o.material.color&&!o.userData.keepGlow){
-      if(o.geometry&&o.geometry.type==="CylinderGeometry"&&o.material.color.getHex()===0x2c2c38&&o.parent===head){
-        /* 头上的圆柱是角,给点蓝光 */
-      }
-    }
-  });
-  /* 悬浮算力方块环 */
+  var g=new THREE.Group();
+  /* —— 达里奥·A (Dario-A 谐音版 CEO 建模):一眼看得出:金边眼镜+西装+灰发+胡茬 —— */
+  /* 身体:深蓝西装 */
+  var torso=box(1.4,1.5,0.8,0x1c2a4a); torso.position.y=1.7; torso.castShadow=true; g.add(torso);
+  var lapel=box(0.72,1.52,0.1,0x16203c); lapel.position.set(0,1.7,0.43); g.add(lapel);
+  var shirt=box(0.5,0.9,0.08,0xf0f2f6); shirt.position.set(0,1.9,0.5); g.add(shirt);
+  var tie=box(0.18,0.95,0.07,0x8a2030); tie.position.set(0,1.75,0.56); g.add(tie);
+  /* 肩膀 */
+  var shL=box(0.5,0.5,0.66,0x1c2a4a); shL.position.set(-0.95,2.35,0); g.add(shL);
+  var shR=box(0.5,0.5,0.66,0x1c2a4a); shR.position.set(0.95,2.35,0); g.add(shR);
+  /* 手臂:一手指着你,一手抱公文箱(书呆子 AI CEO) */
+  var armL=box(0.34,1.1,0.34,0x1c2a4a); armL.position.set(-1.02,1.35,0.05); armL.rotation.x=-0.5; g.add(armL);
+  var handL=ball(0.17,0xd8a078,7,5); handL.position.set(-1.22,1.75,0.42); g.add(handL);
+  var armR=box(0.34,1.0,0.34,0x1c2a4a); armR.position.set(1.02,1.5,0.15); armR.rotation.x=0.3; g.add(armR);
+  var handR=ball(0.17,0xd8a078,7,5); handR.position.set(1.1,1.0,0.42); g.add(handR);
+  /* 公文箱(书呆子标识) */
+  var brief=box(0.7,0.5,0.28,0x4a3a2a); brief.position.set(1.1,0.72,0.42); g.add(brief);
+  var briefH=box(0.1,0.14,0.08,0x6a5540); briefH.position.set(1.1,1.02,0.42); g.add(briefH);
+  /* 头:灰发+眼镜+胡茬 */
+  var head=new THREE.Group(); head.position.y=3.05; g.add(head);
+  var skull=box(0.86,0.94,0.8,0xe8c8a8); skull.position.y=-0.15; skull.castShadow=true; head.add(skull);
+  /* 灰发(向后梳+重点额头) */
+  var hair=box(0.9,0.34,0.84,0xb8b4ac); hair.position.set(0,0.34,-0.04); head.add(hair);
+  var hairT=box(0.92,0.12,0.4,0xb8b4ac); hairT.position.set(0,0.12,-0.35); head.add(hairT);
+  /* 额头 : Dario 显眼的前额 */
+  var brow=box(0.6,0.1,0.05,0xc8a888); brow.position.set(0,0.16,0.41); head.add(brow);
+  /* 金边眼镜:招牌 */
+  var lensL=box(0.26,0.2,0.04,0xcfe4f2); lensL.position.set(-0.2,-0.02,0.43); head.add(lensL);
+  var lensR=box(0.26,0.2,0.04,0xcfe4f2); lensR.position.set(0.2,-0.02,0.43); head.add(lensR);
+  var frame=box(0.7,0.045,0.045,0xd8b540); frame.position.set(0,-0.02,0.44); head.add(frame);
+  var brL=box(0.045,0.3,0.045,0xd8b540); brL.position.set(-0.34,-0.02,0.44); head.add(brL);
+  var brR=box(0.045,0.3,0.045,0xd8b540); brR.position.set(0.34,-0.02,0.44); head.add(brR);
+  /* 柔和眼睛(眼镜里) */
+  var eyeL=ball(0.05,0x2a2a2a,6,4); eyeL.position.set(-0.2,-0.02,0.46); head.add(eyeL);
+  var eyeR=ball(0.05,0x2a2a2a,6,4); eyeR.position.set(0.2,-0.02,0.46); head.add(eyeR);
+  /* 嘴+络腮胡茬 */
+  var mouth=box(0.4,0.06,0.04,0x9a6a52); mouth.position.set(0,-0.42,0.42); head.add(mouth);
+  var beard=box(0.7,0.22,0.06,0xa8a29a); beard.position.set(0,-0.33,0.43); beard.opacity=1; head.add(beard);
+  var jaw=box(0.8,0.18,0.1,0xd8c0a0); jaw.position.set(0,-0.6,0.24); head.add(jaw);
+  g.userData.head=head;
+  /* 手臂保存给动画 */
+  g.userData.arms=[armL,armR];
+  /* 招牌:BOSS 胸牌(写 A 不写真名) */
+  var badge=box(0.16,0.22,0.05,0xa89a7c); badge.position.set(-0.28,2.1,0.48); g.add(badge);
+  var bdt=makeTextSprite("Dario",0.3,"#3a2a10"); bdt.position.set(0,2.12,0.58); bdt.userData.keepGlow=true; g.add(bdt);
+  /* 算力方块环(升级:一圈浮动的A/G式 AI 芯片) */
   var orbit=new THREE.Group();
-  for(var i=0;i<6;i++){
-    var cb=box(0.16,0.16,0.16,0x3a4a6a,0.01);
+  for(var i=0;i<8;i++){
+    var cb=box(0.14,0.14,0.2,0x3a5a8a,0.01);
     cb.material=new THREE.MeshLambertMaterial({color:0x3a5a8a,emissive:0x1a3a6a,emissiveIntensity:0.9});
-    var a=i/6*TAU;
-    cb.position.set(Math.cos(a)*1.1,0,Math.sin(a)*1.1);
+    var a=i/8*TAU;
+    cb.position.set(Math.cos(a)*1.25,0,Math.sin(a)*1.25);
     cb.userData.keepGlow=true;
+    cb.rotation.y=a;
     orbit.add(cb);
   }
-  orbit.position.y=2.2;
+  orbit.position.y=2.9;
   g.add(orbit);
   g.userData.orbit=orbit;
   return g;
@@ -2626,7 +2650,7 @@ function drawHUD2D(c){
     var grd=c.createLinearGradient(bx,0,bx+bw,0);
     grd.addColorStop(0,"#ff5a5a"); grd.addColorStop(1,"#ffb03f");
     c.fillStyle=grd; c.fillRect(bx,H-31,bw*frac,12);
-    hintText(c,"牛模王"+(GS.boss.phase===2?" · 过载":""),bx,H-42,"bold 12px "+FONT,"#fff","left");
+    hintText(c,"Anthropic Dario"+(GS.boss.phase===2?" · 封号模式":""),bx,H-42,"bold 12px "+FONT,"#fff","left");
   }
   /* 小牛模王血条 */
   var mb=null;
@@ -2720,7 +2744,7 @@ function drawOverlays(c){
     c.fillStyle="#ffd23f"; c.font="bold 42px "+FONT; c.textAlign="center"; c.textBaseline="middle";
     c.fillText(curLV.name,W/2,282);
     c.fillStyle="#fff"; c.font="16px "+FONT;
-    c.fillText(GS.li>=15?"牛模王真身就在里面——踩爆它的服务器!":"冲呀——小心牛模王拦路!",W/2,330);
+    c.fillText(GS.li>=15?"Anthropic Dario 就在里面——踩爆它的服务器!":"冲呀——小心牛模王拦路!",W/2,330);
     c.globalAlpha=1;
   }
   if(GS.state==="bossintro"){
@@ -2739,15 +2763,15 @@ function drawOverlays(c){
     c.fillText("牛 来 —!!",0,0);
     c.restore();
     c.fillStyle="#c05aff"; c.font="bold 30px "+FONT; c.textAlign="center"; c.textBaseline="middle";
-    c.fillText("牛模王(Ox Alpha)苏醒了!!",W/2,286);
-    c.font="17px "+FONT; c.fillStyle="#fff"; c.fillText("牛来的AI模型成精了——引它撞墙,再踩它的头!",W/2,322);
+    c.fillText("Anthropic Dario 苏醒了!!",W/2,286);
+    c.font="17px "+FONT; c.fillStyle="#fff"; c.fillText("AI 版牛模王成精了——引它撞墙,再踩它的金边眼镜!",W/2,322);
   }
   if(GS.state==="winseq"){
     c.fillStyle="rgba(0,0,0,0.35)"; c.fillRect(0,0,W,H);
     c.fillStyle="#ffd23f"; c.font="bold 44px "+FONT; c.textAlign="center"; c.textBaseline="middle";
     c.fillText("模型崩溃!!",W/2,200);
     c.fillStyle="#fff"; c.font="22px "+FONT;
-    c.fillText("牛模王被踩到宕机,蓝屏重启了!",W/2,260);
+    c.fillText("Anthropic Dario 被踩到宕机,蓝屏重启了!",W/2,260);
   }
   if(GS.state==="title") drawTitle2D(c);
   else if(GS.state==="select") drawSelect2D(c);
@@ -2854,14 +2878,17 @@ function drawSelect2D(c){
 }
 function drawOver2D(c){
   c.fillStyle="rgba(10,5,5,0.72)"; c.fillRect(0,0,W,H);
-  c.fillStyle="#ff5a5a"; c.font="bold 64px "+FONT; c.textAlign="center"; c.textBaseline="middle";
-  c.fillText(GS.auto?"AI 牛来倒下了…":"牛来倒下了…",W/2,H/2-70);
+  c.fillStyle="#ff5a5a"; c.font="bold 58px "+FONT; c.textAlign="center"; c.textBaseline="middle";
+  c.fillText(GS.auto?"牛来被 Anthropic Dario 拿下了…":"牛来倒下了…",W/2,H/2-70);
+  if(GS.boss&&GS.boss.dead){ /* noop */ }
+  c.fillStyle="#ffd23f"; c.font="bold 26px "+FONT;
+  c.fillText("你被封号了！！",W/2,H/2-30);
   c.fillStyle="#fff"; c.font="20px "+FONT;
-  c.fillText("得分 "+GS.score+" · 金币 "+GS.coins+" · 最高连击 x"+GS.bestCombo,W/2,H/2);
+  c.fillText("得分 "+GS.score+" · 金币 "+GS.coins+" · 最高连击 x"+GS.bestCombo,W/2,H/2+2);
   c.fillStyle="rgba(255,255,255,0.6)"; c.font="15px "+FONT;
-  c.fillText("金币 "+GS.sCoin+" + 击杀 "+GS.sKill+" + 奖励 "+GS.sBonus,W/2,H/2+30);
+  c.fillText("金币 "+GS.sCoin+" + 击杀 "+GS.sKill+" + 奖励 "+GS.sBonus,W/2,H/2+32);
   c.fillStyle="#ffd23f"; c.font="bold 22px "+FONT;
-  c.fillText("按 Enter / 点击 返回标题",W/2,H/2+56);
+  c.fillText("按 Enter / 点击 返回标题",W/2,H/2+58);
 }
 function drawWin2D(c){
   c.fillStyle="rgba(8,8,20,0.72)"; c.fillRect(0,0,W,H);
