@@ -332,7 +332,7 @@ LV.prototype.mplat=function(x1,y1,x2,y2){ this.ents.push({k:"move",x:x1,y:y1,x2:
 var LEVELS=[];
 function defLevel(w,name,theme,fn){ var lv=new LV(w,name,theme); fn(lv); lv.walls(); LEVELS.push(lv); }
 
-defLevel(112,"1-1 青青草原",0,function(g){
+defLevel(112,"1-1 格莱美草原",0,function(g){
   g.ground(0,111); g.startX=3;
   g.coinRow(12,10,4);
   g.q(20,8,1); g.brick(24,8,3); g.q(26,8,2); g.brick(28,8,3);
@@ -352,7 +352,7 @@ defLevel(112,"1-1 青青草原",0,function(g){
   g.bird(104,7);
   g.flag(105);
 });
-defLevel(118,"1-2 云雀相伴",0,function(g){
+defLevel(118,"1-2 云雀千问",0,function(g){
   g.ground(0,117); g.startX=3;
   g.coinRow(10,9,5);
   g.plat(16,9,4); g.coinRow(17,8,3); g.bird(18,6);
@@ -370,7 +370,7 @@ defLevel(118,"1-2 云雀相伴",0,function(g){
   g.pit(98,101); g.spring(105); g.coinRow(104,6,4);
   g.leopard(110); g.flag(112);
 });
-defLevel(122,"1-3 越过山谷",0,function(g){
+defLevel(122,"1-3 鸡屁踢山谷",0,function(g){
   g.ground(0,121); g.startX=3;
   g.coinRow(8,10,4);
   g.wolf(15);
@@ -391,7 +391,7 @@ defLevel(122,"1-3 越过山谷",0,function(g){
   g.pit(112,115); g.spring(117); g.coinRow(116,5,3);
   g.flag(118);
 });
-defLevel(126,"1-4 草原尽头",0,function(g){
+defLevel(126,"1-4 草原图灵",0,function(g){
   g.ground(0,125); g.startX=3;
   g.coinRow(6,9,5); g.q(14,8,1);
   g.wolf(20); g.wolf(24);
@@ -409,7 +409,7 @@ defLevel(126,"1-4 草原尽头",0,function(g){
   g.leopard(114); g.wolf(118);
   g.flag(120);
 });
-defLevel(114,"2-1 黄沙戈壁",1,function(g){
+defLevel(114,"2-1 逗包戈壁",1,function(g){
   g.ground(0,113); g.startX=3;
   g.wolf(12); g.coinRow(10,10,3);
   g.pit(18,21); g.coinArc(19,9);
@@ -426,7 +426,7 @@ defLevel(114,"2-1 黄沙戈壁",1,function(g){
   g.wolf(100); g.coinRow(104,11,4);
   g.flag(108);
 });
-defLevel(120,"2-2 仙人掌谷",1,function(g){
+defLevel(120,"2-2 奇米仙人谷",1,function(g){
   g.ground(0,119); g.startX=3;
   g.coinRow(8,9,4); g.wolf(14);
   g.pit(18,22); g.plat(18,9,2); g.coinArc(20,8);
@@ -443,7 +443,7 @@ defLevel(120,"2-2 仙人掌谷",1,function(g){
   g.pit(104,108); g.mplat(105,10,108,10);
   g.wolf(112); g.flag(114);
 });
-defLevel(126,"2-3 沙丘长跑",1,function(g){
+defLevel(126,"2-3 maxmini沙丘",1,function(g){
   g.ground(0,125); g.startX=3;
   g.wolf(10); g.leopard(14); g.leopard(18);
   g.pit(24,27); g.spring(30);
@@ -462,7 +462,7 @@ defLevel(126,"2-3 沙丘长跑",1,function(g){
   g.coinRow(118,5,3);
   g.flag(121);
 });
-defLevel(130,"2-4 沙漠遗迹",1,function(g){
+defLevel(130,"2-4 深思遗迹",1,function(g){
   g.ground(0,129); g.startX=3;
   g.coinRow(8,9,4); g.q(16,8,1);
   g.wolf(22); g.leopard(26);
@@ -481,7 +481,7 @@ defLevel(130,"2-4 沙漠遗迹",1,function(g){
   g.pit(122,125); g.coinArc(123,9);
   g.flag(126);
 });
-defLevel(114,"3-1 冰雪初临",2,function(g){
+defLevel(114,"3-1 月之阳面",2,function(g){
   g.ground(0,113); g.startX=3;
   g.coinRow(10,9,4);
   g.q(18,8,1); g.wolf(24);
@@ -499,7 +499,7 @@ defLevel(114,"3-1 冰雪初临",2,function(g){
   g.coinRow(103,5,3);
   g.flag(108);
 });
-defLevel(122,"3-2 冰冻峡谷",2,function(g){
+defLevel(122,"3-2 克老得冰谷",2,function(g){
   g.ground(0,121); g.startX=3;
   g.coinRow(8,10,4); g.wolf(16);
   g.pit(20,24); g.plat(20,9,2); g.coinArc(22,8);
@@ -516,7 +516,7 @@ defLevel(122,"3-2 冰冻峡谷",2,function(g){
   g.spring(102); g.coinRow(102,5,4);
   g.raven(108,7); g.flag(116);
 });
-defLevel(126,"3-3 雪峰攀登",2,function(g){
+defLevel(126,"3-3 羊驼雪峰",2,function(g){
   g.ground(0,125); g.startX=3;
   g.wolf(12); g.leopard(16);
   g.pit(20,23); g.spring(26);
@@ -534,7 +534,7 @@ defLevel(126,"3-3 雪峰攀登",2,function(g){
   g.raven(112,6); g.coinRow(114,11,4);
   g.flag(120);
 });
-defLevel(130,"3-4 暴风雪原",2,function(g){
+defLevel(130,"3-4 格罗可雪原",2,function(g){
   g.ground(0,129); g.startX=3;
   g.coinRow(8,9,4); g.q(16,8,1);
   g.wolf(22); g.leopard(26);
@@ -552,7 +552,7 @@ defLevel(130,"3-4 暴风雪原",2,function(g){
   g.pit(114,118); g.plat(114,9,3);
   g.raven(122,6); g.flag(124);
 });
-defLevel(114,"4-1 熔岩入口",3,function(g){
+defLevel(114,"4-1 柴特鸡屁踢",3,function(g){
   g.ground(0,113); g.startX=3;
   g.coinRow(10,9,4);
   g.lava(18,3); g.coinArc(19,9);
@@ -570,7 +570,7 @@ defLevel(114,"4-1 熔岩入口",3,function(g){
   g.spring(102); g.coinRow(102,5,3);
   g.flag(108);
 });
-defLevel(120,"4-2 熔岩裂谷",3,function(g){
+defLevel(120,"4-2 索拉裂谷",3,function(g){
   g.ground(0,119); g.startX=3;
   g.coinRow(8,10,3); g.wolf(14);
   g.lava(18,3); g.coinArc(19,9);
@@ -587,7 +587,7 @@ defLevel(120,"4-2 熔岩裂谷",3,function(g){
   g.bird(104,6); g.q(108,8,1);
   g.flag(114);
 });
-defLevel(126,"4-3 火焰之路",3,function(g){
+defLevel(126,"4-3 曼巴火焰之路",3,function(g){
   g.ground(0,125); g.startX=3;
   g.wolf(10); g.leopard(14);
   g.lava(18,3); g.coinArc(19,9);
@@ -606,7 +606,7 @@ defLevel(126,"4-3 火焰之路",3,function(g){
   g.leopard(110);
   g.flag(120);
 });
-defLevel(100,"4-4 牛模王的服务器",3,function(g){
+defLevel(100,"4-4 牛模王的王座",3,function(g){
   g.ground(0,99); g.startX=6;
   g.solid(4,0,14); g.solid(95,0,14);
   g.coinRow(14,10,3); g.q(20,8,1);
@@ -617,7 +617,7 @@ defLevel(100,"4-4 牛模王的服务器",3,function(g){
   g.flagX=-1;
 });
 /* ===== 第5世界:月面攻势(主题4 · 星空地球背景) ===== */
-defLevel(116,"5-1 月面基地",4,function(g){
+defLevel(116,"5-1 文心月面基地",4,function(g){
   g.groundAll(); g.startX=3;
   g.coinRow(10,10,4); g.q(18,8,1);
   g.wolf(26);
@@ -633,7 +633,7 @@ defLevel(116,"5-1 月面基地",4,function(g){
   g.bird(96,6); g.wolf(100);
   g.flag(106);
 });
-defLevel(124,"5-2 环形山",4,function(g){
+defLevel(124,"5-2 千问环形山",4,function(g){
   g.groundAll(); g.startX=3;
   g.coinRow(8,10,4);
   g.pit(14,20); g.mplat(14,10,18,7);
@@ -650,7 +650,7 @@ defLevel(124,"5-2 环形山",4,function(g){
   g.pit(106,110); g.plat(107,9,2);
   g.flag(116);
 });
-defLevel(118,"5-3 月球矩阵",4,function(g){
+defLevel(118,"5-3 智谱矩阵",4,function(g){
   g.groundAll(); g.startX=3;
   g.coinRow(8,9,4); g.q(16,8,3); g.brick(18,8,3);
   g.pipe(24,2); g.pipe(28,3);
@@ -666,7 +666,7 @@ defLevel(118,"5-3 月球矩阵",4,function(g){
   g.pit(100,105); g.mplat(100,10,105,7);
   g.flag(110);
 });
-defLevel(110,"5-4 牛模王服务器",4,function(g){
+defLevel(110,"5-4 牛模王的服务器",4,function(g){
   g.groundAll(); g.startX=3;
   g.coinRow(10,9,4);
   g.ent({k:"miniboss",x:24});
@@ -865,6 +865,7 @@ function startLevel(i){
 
 /* ============ 玩家 ============ */
 function damagePlayer(){
+  if(GS.auto) return; /* 牛来模式:无敌 */
   if(PL.inv>0||PL.dead||GS.state!=="play") return;
   if(PL.star>0) return;
   if(PL.big){ PL.big=false; PL.inv=1.6; sHurt(); flash=0.8; addShake(6); popText(PL.x+14,PL.y-20,"变小了!","#ff9a3f"); PL.h=36; }
@@ -872,6 +873,11 @@ function damagePlayer(){
 }
 function die(){
   if(PL.dead) return;
+  if(GS.auto){ /* 牛来模式:不灭,掉坑回升继续冲 */
+    PL.y=5*T; PL.vy=-420; sSpring();
+    popText(PL.x+14,PL.y-30,"牛来不灭!","#5ad4ff");
+    return;
+  }
   PL.dead=true; PL.vy=-720; sDie(); addShake(8);
   GS.state="dead"; GS.deadT=0;
 }
@@ -960,7 +966,7 @@ function updatePlayer(dt){
   var grav=(p.vy<0)?(keys.jump?1250:3300):2250;
   p.vy+=grav*dt; p.vy=Math.min(p.vy,1000);
   p.prevY=p.y;
-  p.x+=p.vx*dt; collideX(p);
+  p.x+=p.vx*dt; if(!GS.auto) collideX(p); /* 牛来模式:穿墙 */
   p.y+=p.vy*dt; collideY(p);
   if(!p._wasG&&p.ground){
     if(p._vyPrev>420){ burst(p.x+14,p.y+p.h,"dust",7,140); addShake(Math.min(5,p._vyPrev/220)); part({x:p.x+14,y:p.y+p.h,vx:0,vy:0,g:0,life:0.3,t:0,type:"ring",size:4,col:"rgba(255,255,255,0.6)"}); }
@@ -1161,11 +1167,7 @@ function updateEnemies(dt){
         for(var qb=b0;qb<=b1;qb++){ if(eSolid(tileAt(qb,by))){ e.y=by*T-e.h-0.01; e.vy=0; lb=true; break; } }
         if(lb&&eWallAhead(e)){ e.vy=-620; }
         else if(lb&&!eSolidAhead(e)){ e.face*=-1; } /* 崖边掉头,绝不跳坑 */
-        if(!lb&&e.y>H+40){ /* 万一掉下去:捞回竞技场,不会白给 */
-          e.x=clamp(p.x+(p.x>e.x?-300:300),2*T,(curLV.w-3)*T);
-          e.y=8*T; e.vy=0; e.hurtT=0.5;
-          popText(e.x+e.w/2,e.y-20,"牛模王又爬回来了!","#c05aff");
-        }
+        if(!lb&&e.y>H+40){ e.gone=true; } /* 掉坑=阵亡,禁止复活刷新 */
       }
     } else {
       var spd=e.k==="leopard"?135:72;
@@ -1187,6 +1189,26 @@ function updateEnemies(dt){
     if(!e.dead&&!p.dead&&GS.state==="play"&&e.k!=="bird"){ /* 云雀永远友好 */
       var ov=overlap(e.x+3,e.y+4,e.w-6,e.h-6,p.x+3,p.y+3,p.w-6,p.h-3);
       if(ov){
+        if(GS.auto&&!p.dead){ /* 牛来模式:碰谁谁死 */
+          if(e.k==="miniboss"){
+            if(e.hurtT<=0){
+              e.hp--; e.hurtT=1.0;
+              sBreak(); addShake(7); burst(e.x+e.w/2,e.y+e.h/2,"spark",16,300);
+              if(e.hp<=0){
+                e.dead=true; e.squash=0.5; e.fly=p.face;
+                GS.score+=2000; GS.sKill+=2000; popText(e.x+e.w/2,e.y-10,"牛模王被撞爆!+2000","#c05aff");
+                for(var cd9=0;cd9<6;cd9++) spawnCoinDrop(e.x+e.w/2+rnd(-70,70),e.y-20-cd9*14);
+                sPerfect();
+              } else popText(e.x+e.w/2,e.y-10,"牛模王 HP:"+e.hp,"#ff5a5a");
+            }
+            p.vy=-540;
+          } else {
+            e.dead=true; e.squash=0.35;
+            GS.score+=300; GS.sKill+=300; sBreak(); addShake(4);
+            popText(e.x+e.w/2,e.y,"碰!+300","#8aff5a");
+            p.vy=-260;
+          }
+        } else {
         var stomping=(p.vy>0&&(p.y+p.h-6)<e.y+e.h*0.5);
         if(e.k==="miniboss"){
           if(stomping){
@@ -1246,6 +1268,7 @@ function updateEnemies(dt){
           burst(e.x+e.w/2,e.y+e.h/2,"spark",10,260);
         }
         else damagePlayer();
+        }
       }
     }
   }
@@ -1334,6 +1357,16 @@ function updateBoss(dt){
   if(!b.dead&&!p.dead&&GS.state==="play"){
     var ov=overlap(b.x+6,b.y+4,b.w-12,b.h-8,p.x+4,p.y+3,p.w-8,p.h-3);
     if(ov){
+      if(GS.auto){ /* 牛来模式:直接撞死牛模王 */
+        if(b.hurt<=0){
+          b.hp--; b.hurt=1.2; b.state="idle"; b.atk=2.2;
+          sBreak(); addShake(10); freeze=0.06;
+          burst(b.x+b.w/2,b.y+30,"spark",14,300);
+          popText(b.x+b.w/2,b.y-16,b.hp>0?("牛模王 HP:"+b.hp):"牛模王 崩了!","#ff5a5a");
+          if(b.hp<=0){ defeatBoss(); }
+        }
+        p.vy=-560;
+      } else {
       var stomping=(p.vy>0&&(p.y+p.h-8)<b.y+b.h*0.55);
       if(stomping){
         /* 踩头永远弹起;无敌帧内不重复计伤、绝不扣血 */
@@ -1348,6 +1381,7 @@ function updateBoss(dt){
       } else if(p.star>0){ b.hp--; b.hurt=1.2; if(b.hp<=0){ defeatBoss(); } else { burst(b.x+b.w/2,b.y+30,"spark",10,260); sHurt(); }
         p.vy=-500;
       } else { damagePlayer(); }
+      }
     }
   }
 }
@@ -1358,7 +1392,7 @@ function updateFires(dt){
     f.vy+=980*dt; f.x+=f.vx*dt; f.y+=f.vy*dt;
     if(Math.random()<0.5) part({x:f.x,y:f.y,vx:rnd(-30,30),vy:rnd(-40,10),g:-60,life:0.3,t:0,type:"dust",size:3,col:pick(["#ff8a3f","#ffc63f","#ff5a3f"])});
     var hitP=!p.dead&&GS.state==="play"&&overlap(f.x-9,f.y-9,18,18,p.x+3,p.y+3,p.w-6,p.h-3);
-    if(hitP) damagePlayer();
+    if(hitP&&!GS.auto) damagePlayer(); /* 牛来模式:火球都躲开 */
     var tx=Math.floor(f.x/T),ty=Math.floor(f.y/T);
     if(hitP||solid(tileAt(tx,ty))||f.t>6||f.y>H+60){
       burst(f.x,f.y,"fir",8,180);
