@@ -617,7 +617,7 @@ defLevel(100,"4-4 牛模王的王座",3,function(g){
   g.flagX=-1;
 });
 /* ===== 第5世界:月面攻势(主题4 · 星空地球背景) ===== */
-defLevel(116,"5-1 温心月面基地",4,function(g){
+defLevel(116,"5-1 问心月面基地",4,function(g){
   g.groundAll(); g.startX=3;
   g.coinRow(10,10,4); g.q(18,8,1);
   g.wolf(26);
@@ -633,7 +633,7 @@ defLevel(116,"5-1 温心月面基地",4,function(g){
   g.bird(96,6); g.wolf(100);
   g.flag(106);
 });
-defLevel(124,"5-2 米斯特拉环形山",4,function(g){
+defLevel(124,"5-2 万答环形山",4,function(g){
   g.groundAll(); g.startX=3;
   g.coinRow(8,10,4);
   g.pit(14,20); g.mplat(14,10,18,7);
@@ -650,7 +650,7 @@ defLevel(124,"5-2 米斯特拉环形山",4,function(g){
   g.pit(106,110); g.plat(107,9,2);
   g.flag(116);
 });
-defLevel(118,"5-3 阿尔帕卡矩阵",4,function(g){
+defLevel(118,"5-3 智谱矩阵",4,function(g){
   g.groundAll(); g.startX=3;
   g.coinRow(8,9,4); g.q(16,8,3); g.brick(18,8,3);
   g.pipe(24,2); g.pipe(28,3);
