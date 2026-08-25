@@ -1,6 +1,12 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+<!--
+  牛来大冒险 3D · Ox is Coming · v1.4.1
+  Copyright (c) 2026 MCapricorns — https://github.com/MCapricorns
+  代码许可: MIT License (详见仓库 LICENSE 文件)
+  《牛来》角色形象版权归其权利人所有,本作品为粉丝致敬之作
+-->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>牛来大冒险 3D · NIU LAI 3D</title>
@@ -48,7 +54,8 @@ console.warn( 'Scripts "build/three.js" and "build/three.min.js" are deprecated 
 ====================================================== */
 var W=960,H=600,T=40,S=0.08,TAU=Math.PI*2;
 var FONT='"ZCOOL KuaiLe","Microsoft YaHei",sans-serif';
-var VER="v1.4.0";
+var VER="v1.4.1";
+var GH={x:-1,y:-1,w:0,h:0}; /* 作者GitHub徽章热区 */
 function clamp(v,a,b){return v<a?a:(v>b?b:v);}
 function lerp(a,b,t){return a+(b-a)*t;}
 function rnd(a,b){return a+Math.random()*(b-a);}
@@ -2461,9 +2468,9 @@ function drawHUD2D(c){
   c.fillStyle="#ffd23f"; c.fillText(("0000000"+GS.score).slice(-7),168,26);
   c.textAlign="center";
   c.fillStyle="rgba(255,255,255,0.92)"; c.font="14px "+FONT;
-  c.fillText(curLV?curLV.name:"",W/2,17);
+  c.fillText(curLV?curLV.name:"",W/2,16);
   c.fillStyle="rgba(160,220,255,0.8)"; c.font="11px "+FONT;
-  c.fillText((GS.hs>0?("最高 "+GS.hs):"牛来大冒险")+(GS.auto?" · AI代打中":""),W/2,38);
+  c.fillText(GS.hs>0?("最高 "+GS.hs):"牛来大冒险",W/2,34);
   c.textAlign="right";
   c.font="bold 24px "+FONT;
   c.fillStyle=GS.time<30?"#ff5a5a":"#fff";
@@ -2485,8 +2492,8 @@ function drawHUD2D(c){
   if(GS.auto){
     c.save();
     c.globalAlpha=0.75+0.25*Math.sin(GT*4);
-    c.fillStyle="#5ad4ff"; c.font="bold 15px "+FONT; c.textAlign="left";
-    c.fillText("[AI 自动闯关中]",W-210,66);
+    c.fillStyle="#5ad4ff"; c.font="bold 15px "+FONT; c.textAlign="center";
+    c.fillText("[AI 自动闯关中]",W/2,H-40);
     c.restore();
   }
   /* 牛模王血条 */
@@ -2653,7 +2660,16 @@ function drawTitle2D(c){
     if(GS.hs>0){ c.fillStyle="#ffd23f"; c.fillText("最高分 "+GS.hs,W/2,392); }
   }
   c.fillStyle="rgba(255,255,255,0.6)"; c.font="13px "+FONT;
-  c.fillText("主角:牛来 · Boss:牛模王(Ox Alpha 模型成精) · "+VER+" · 音效 WebAudio 合成",W/2,H-18);
+  c.fillText("主角:牛来 · Boss:牛模王(Ox Alpha 模型成精) · "+VER+" · © 2026 MCapricorns · MIT",W/2,H-18);
+  /* 作者 GitHub 徽章(可点击) */
+  var gw2=320,gh2=42,gx2=W-gw2-20,gy2=H-70;
+  GH.x=gx2; GH.y=gy2; GH.w=gw2; GH.h=gh2;
+  c.save();
+  c.fillStyle="rgba(16,20,34,0.88)"; c.fillRect(gx2,gy2,gw2,gh2);
+  c.strokeStyle="#6ea8ff"; c.lineWidth=2; c.strokeRect(gx2,gy2,gw2,gh2);
+  c.fillStyle="#ffd23f"; c.font="bold 15px "+FONT; c.textAlign="center"; c.textBaseline="middle";
+  c.fillText("★ 点赞收藏 · github.com/MCapricorns",gx2+gw2/2,gy2+gh2/2+1);
+  c.restore();
 }
 var SEL_COLS=4,SEL_CW=170,SEL_CH=86,SEL_GX=18,SEL_GY=14;
 function selGridX0(){ return (W-(SEL_COLS*SEL_CW+(SEL_COLS-1)*SEL_GX))/2; }
@@ -2720,6 +2736,8 @@ function drawWin2D(c){
   c.fillText("牛模王被踩到格式化,牛来在月球插上了牛头骨大旗。谢谢玩!",W/2,H/2+16);
   c.fillStyle="rgba(255,255,255,0.7)"; c.font="14px "+FONT;
   c.fillText("最高分 "+GS.hs,W/2,H/2+50);
+  c.fillStyle="rgba(110,168,255,0.85)"; c.font="13px "+FONT;
+  c.fillText("★ github.com/MCapricorns · 点赞收藏",W/2,H/2+78);
   c.fillStyle="#ffd23f"; c.font="bold 22px "+FONT;
   c.fillText("按 Enter / 点击 返回标题",W/2,H/2+110);
 }
@@ -2737,6 +2755,10 @@ cv.addEventListener("pointerdown",function(e){
   initAU(); if(AC&&AC.state==="suspended")AC.resume();
   var r=cv.getBoundingClientRect();
   var mx=(e.clientX-r.left)*W/r.width, my=(e.clientY-r.top)*H/r.height;
+  if(GS.state==="title"&&mx>=GH.x&&mx<=GH.x+GH.w&&my>=GH.y&&my<=GH.y+GH.h){
+    try{ window.open("https://github.com/MCapricorns","_blank"); }catch(err){}
+    sClick(); return;
+  }
   if(GS.state==="title"){ GS.state="select"; makeSky(); sClick(); }
   else if(GS.state==="select"){
     var cell=selCellAt(mx,my);
