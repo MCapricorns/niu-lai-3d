@@ -2216,7 +2216,12 @@ function sync3D(){
     else mCalf.traverse(function(o){ if(o.isMesh&&o.material&&o.material.emissive){ o.material.emissive.setHex(0x000000); o.material.emissiveIntensity=0;} });
     if(PL.inv>0&&(GT*12|0)%2===0) mCalf.visible=(GT*16|0)%2===0;
     else mCalf.visible=true;
-    if(PL.dead){ mCalf.rotation.z=Math.PI+GT*3; mCalf.position.y=jy+0.4; }
+    if(PL.dead){
+      /* 死亡:向后侧翻倒下(不再倒立翻筋斗,不抽象) */
+      var dk=Math.min(1,GS.deadT*3.2);
+      mCalf.rotation.z=-Math.PI*0.42*dk+Math.sin(GT*6)*0.05*dk;
+      mCalf.position.y=jy+(1-dk)*0.35;
+    }
   }
   /* 敌人 */
   for(var i=0;i<ents.length;i++){ var e=ents[i]; if(!e.mesh) continue;
@@ -2470,7 +2475,7 @@ function drawHUD2D(c){
   c.fillStyle="rgba(255,255,255,0.92)"; c.font="14px "+FONT;
   c.fillText(curLV?curLV.name:"",W/2,16);
   c.fillStyle="rgba(160,220,255,0.8)"; c.font="11px "+FONT;
-  c.fillText(GS.hs>0?("最高 "+GS.hs):"牛来大冒险",W/2,34);
+  c.fillText(VER+" · "+(GS.hs>0?("最高 "+GS.hs):"牛来大冒险"),W/2,34);
   c.textAlign="right";
   c.font="bold 24px "+FONT;
   c.fillStyle=GS.time<30?"#ff5a5a":"#fff";
@@ -2480,8 +2485,6 @@ function drawHUD2D(c){
   if(muted){ c.fillStyle="rgba(255,120,120,0.8)"; c.fillText("MUTE",W-72,42); }
   c.textAlign="left"; c.font="11px "+FONT; c.fillStyle="rgba(255,255,255,0.42)";
   c.fillText("M静音 · P暂停 · R重开 · Esc选关 · O AI代打 · "+VER,16,H-12);
-  if(muted){ c.fillText("MUTE",W-90,23); }
-  if(GS.hs>0){ c.fillStyle="rgba(160,220,255,0.8)"; c.font="12px "+FONT; c.fillText("BEST "+GS.hs,W/2,40); }
   /* 空中连击 */
   if((GS.combo||0)>=2&&(GS.state==="play"||GS.state==="bossintro")){
     c.textAlign="center"; c.font="bold 22px "+FONT;
