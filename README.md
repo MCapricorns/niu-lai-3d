@@ -64,4 +64,4 @@ Three.js 3D 马里奥式平台跳跃，零依赖，点开即玩。
 
 ---
 
-*版本 v1.6.0 · index.html(骨架) + three.min.js(引擎) + game.js(逻辑)*
+*版本 v1.6.1 · index.html(骨架) + three.min.js(引擎) + game.js(逻辑)*
