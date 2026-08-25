@@ -655,7 +655,7 @@ defLevel(124,"5-2 万嗒环形山",4,function(g){
   g.pit(106,110); g.plat(107,9,2);
   g.flag(116);
 });
-defLevel(118,"5-3 蚩谱矩阵",4,function(g){
+defLevel(118,"5-3 质朴矩阵",4,function(g){
   g.groundAll(); g.startX=3;
   g.coinRow(8,9,4); g.q(16,8,3); g.brick(18,8,3);
   g.pipe(24,2); g.pipe(28,3);
