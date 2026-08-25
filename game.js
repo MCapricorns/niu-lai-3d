@@ -9,6 +9,7 @@ var W=960,H=600,T=40,S=0.08,TAU=Math.PI*2;
 var FONT='"ZCOOL KuaiLe","Microsoft YaHei",sans-serif';
 var VER="v1.5.0";
 var GH={x:-1,y:-1,w:0,h:0}; /* 作者GitHub徽章热区 */
+var CLR={x:-1,y:-1,w:0,h:0}; /* 选关页"清空成绩"按钮热区 */
 function clamp(v,a,b){return v<a?a:(v>b?b:v);}
 function lerp(a,b,t){return a+(b-a)*t;}
 function rnd(a,b){return a+Math.random()*(b-a);}
@@ -1975,6 +1976,57 @@ function buildBoss(){
   g.userData.orbit=orbit;
   return g;
 }
+function buildMiniBoss(){
+  /* —— GPT 老板 (Ultra Man) 造型:深蓝西装超人,金光大王冠,红光眼睛 —— */
+  var g=new THREE.Group();
+  var torso=box(1.5,1.6,0.85,0x14203e); torso.position.y=1.75; torso.castShadow=true; g.add(torso);
+  var chestE=box(0.4,0.5,0.06,0x4a9ae0); chestE.position.set(0,1.95,0.46); g.add(chestE); /* 胸前"光标"(GPT蓝标) */
+  var belt=box(1.56,0.22,0.9,0xc8a030); belt.position.y=1.0; g.add(belt); /* 金腰带(超人),金边金光 */
+  var buckle=box(0.4,0.3,0.1,0xffd23f); buckle.position.set(0,1.0,0.48); g.add(buckle);
+  var shL=box(0.6,0.55,0.7,0x14203e); shL.position.set(-1.0,2.4,0); g.add(shL);
+  var shR=box(0.6,0.55,0.7,0x14203e); shR.position.set(1.0,2.4,0); g.add(shR);
+  var armL=box(0.4,1.15,0.4,0x14203e); armL.position.set(-1.05,1.4,0.1); armL.rotation.x=-0.5; g.add(armL);
+  var armR=box(0.4,1.0,0.4,0x14203e); armR.position.set(1.05,1.55,0.2); armR.rotation.x=0.55; g.add(armR);
+  var handL=ball(0.18,0xd8a078,7,5); handL.position.set(-1.28,1.8,0.48); g.add(handL);
+  var handR=ball(0.18,0xd8a078,7,5); handR.position.set(1.28,1.1,0.48); g.add(handR);
+  /* -- 头:Ultra Man 黑白灰露脸(大佬脸) -- */
+  var head=new THREE.Group(); head.position.y=3.18; g.add(head);
+  var skull=box(0.9,0.98,0.85,0xd8b090); skull.position.y=-0.16; skull.castShadow=true; head.add(skull);
+  var hair=box(0.94,0.22,0.9,0x9a9088); hair.position.set(0,0.42,-0.02); head.add(hair);
+  /* 巨发光眼(透视眼=傲慢) */
+  var eMat=new THREE.MeshBasicMaterial({color:0xff4030});
+  var eyeL=new THREE.Mesh(new THREE.SphereGeometry(0.1,10,8),eMat);
+  eyeL.userData.keepGlow=true; eyeL.position.set(-0.22,0.02,0.44); head.add(eyeL);
+  var eyeR=eyeL.clone(); eyeR.position.z=-0.44; eyeR.position.x=0.22; eyeR.position.set(0.22,0.02,0.44); head.add(eyeR);
+  /* -- 金冠(王冠=老板) -- */
+  var crown=new THREE.Group(); crown.position.y=0.62;
+  var cr=cyl(0.22,0.26,0.2,0xffd23f,8); cr.position.y=0; crown.add(cr);
+  for(var ci=0;ci<8;ci++){
+    var a2=ci/8*TAU;
+    var spike=box(0.08,0.24,0.06,0xffd23f); spike.position.set(Math.cos(a2)*0.2,0.2,Math.sin(a2)*0.2); crown.add(spike);
+  }
+  head.add(crown);
+  /* 嘴:大佬笑 */
+  var mouth=box(0.5,0.07,0.05,0x7a5038); mouth.position.set(0,-0.36,0.45); head.add(mouth);
+  var jaw=box(0.84,0.2,0.12,0xc8a888); jaw.position.set(0,-0.62,0.26); head.add(jaw);
+  g.userData.head=head;
+  g.userData.arms=[armL,armR];
+  /* 悬浮"GPT 算力标"(金色光环+光标):一眼=GPT老板 */
+  var orbit=new THREE.Group();
+  var ring=cyl(1.15,1.15,0.06,0xffd23f,16); ring.rotation.x=Math.PI/2; orbit.add(ring);
+  for(var i2=0;i2<6;i2++){
+    var cb=box(0.18,0.18,0.18,0x4a9ae0,0.01);
+    cb.material=new THREE.MeshLambertMaterial({color:0x5aa8f0,emissive:0x1a3a6a,emissiveIntensity:0.9});
+    var a3=i2/6*TAU;
+    cb.position.set(Math.cos(a3)*1.15,0,Math.sin(a3)*1.15);
+    cb.userData.keepGlow=true;
+    orbit.add(cb);
+  }
+  orbit.position.y=3.0;
+  g.add(orbit);
+  g.userData.orbit=orbit;
+  return g;
+}
 function buildItem3D(k){
   var g=new THREE.Group();
   if(k==="milk"){
@@ -2265,7 +2317,7 @@ function buildWorld3D(){
       else if(e.k==="leopard") mm=buildLeopard();
       else if(e.k==="raven") mm=buildRaven();
       else if(e.k==="bird") mm=buildBird();
-      else if(e.k==="miniboss") mm=buildBoss();
+      else if(e.k==="miniboss") mm=buildMiniBoss();
       if(mm){ mm.scale.setScalar(e.k==="miniboss"?1.5:1.7); dynGroup.add(mm); e.mesh=mm; }
     }
   }
@@ -2874,7 +2926,15 @@ function drawSelect2D(c){
     if(blv>0){ c.fillStyle="rgba(255,210,63,0.8)"; c.font="11px "+FONT; c.fillText("最佳 "+blv,x+SEL_CW/2,y+59); }
   }
   c.fillStyle="rgba(255,255,255,0.5)"; c.font="12px "+FONT;
-  c.fillText("每关终点都有牛模王分身拦路 · 4-4 挑战牛模王真身 · "+VER,W/2,H-24);
+  c.fillText("每关终点都有牛模王分身拦路 · 4-4 决战 Anthropic Dario · "+VER,W/2,H-24);
+  /* 清空最佳/最高分 按钮 */
+  if(GS.hs>0||(function(){ var any=false; for(var bi=0;bi<LEVELS.length;bi++){ try{ if((localStorage.getItem("niu_best_lv"+bi)||"0")!=="0"){ any=true; break; } }catch(e){} } return any; })()){
+    CLR.x=12; CLR.y=14; CLR.w=120; CLR.h=34;
+    c.fillStyle="rgba(20,16,34,0.85)"; c.fillRect(CLR.x,CLR.y,CLR.w,CLR.h);
+    c.strokeStyle="#ff6a6a"; c.lineWidth=1.5; c.strokeRect(CLR.x,CLR.y,CLR.w,CLR.h);
+    c.fillStyle="#ff8a8a"; c.font="bold 13px "+FONT; c.textAlign="center"; c.textBaseline="middle";
+    c.fillText("🧹 清空成绩",CLR.x+CLR.w/2,CLR.y+CLR.h/2+1);
+  }
 }
 function drawOver2D(c){
   c.fillStyle="rgba(10,5,5,0.72)"; c.fillRect(0,0,W,H);
@@ -2927,6 +2987,16 @@ cv.addEventListener("pointerdown",function(e){
   }
   if(GS.state==="title"){ GS.state="select"; makeSky(); sClick(); }
   else if(GS.state==="select"){
+    if(mx>=CLR.x&&mx<=CLR.x+CLR.w&&my>=CLR.y&&my<=CLR.y+CLR.h){
+      try{
+        for(var ci=0;ci<LEVELS.length;ci++) localStorage.removeItem("niu_best_lv"+ci);
+        localStorage.removeItem("niu_best");
+      }catch(err){}
+      GS.hs=0;
+      addShake(3); sClick();
+      popText(W/2+90,H/2-30,"已清空成绩","#8aff5a");
+      return;
+    }
     var cell=selCellAt(mx,my);
     if(cell>=0){ GS.selIdx=cell; startLevel(cell); }
   }
