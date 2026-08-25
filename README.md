@@ -52,6 +52,11 @@ Three.js 3D 马里奥式平台跳跃，零依赖，点开即玩。
 - **GPT 老板**：深蓝西装、金冠、红色发光眼与 GPT 算力光环；守在各旗帜关终点
 - **Anthropic Dario**：终局西装金边眼镜 CEO，会冲撞、喷火球，残血进入“封号模式”；战败后 Anthropic 机房服务器冒烟
 
+## 🛠 维护
+
+- 关卡排列、扩展段和安全路线集中在 [`levels.js`](levels.js)，修改地图无需进入游戏主循环。
+- `npm install` 后运行 `npm run check` 检查格式和语法规则；运行 `npm test` 使用 Microsoft Edge 对人工键盘路线与自动模式执行固定种子的 20 关 E2E。
+
 ## 📄 许可与版权
 
 - 代码：[MIT License](LICENSE) · Copyright (c) 2026 **MCapricorns** · https://github.com/MCapricorns
@@ -65,4 +70,4 @@ Three.js 3D 马里奥式平台跳跃，零依赖，点开即玩。
 
 ---
 
-_版本 v1.7.0 · index.html(骨架) + three.min.js(引擎) + game.js(逻辑)_
+_版本 v1.7.1 · index.html(骨架) + three.min.js(引擎) + levels.js(关卡配置) + game.js(游戏逻辑)_
