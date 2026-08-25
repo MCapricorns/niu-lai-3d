@@ -216,7 +216,7 @@ window.addEventListener("keydown",function(e){
   if(e.code==="KeyM"){muted=!muted;return;}
   if(e.code==="KeyR"&&(GS.state==="play"||GS.state==="pause")){ loadLevel(GS.li,true); sClick(); return; }
   if(e.code==="KeyO"&&(GS.state==="play"||GS.state==="bossintro")){
-    GS.auto=!GS.auto; if(GS.auto){ GS.lives=99; popText(PL.x+14,PL.y-40,"AI 接管!","#5ad4ff"); }
+    GS.auto=!GS.auto; if(GS.auto){ GS.lives=99; niuHoller("妈妈——!! 牛来无敌!!"); sNiuLai(); addShake(16); flash=0.35; }
     else popText(PL.x+14,PL.y-40,"手动模式","#ffd43f");
     sClick(); return;
   }
@@ -328,6 +328,9 @@ LV.prototype.pipe=function(x,h){
 };
 LV.prototype.flag=function(x){ this.flagX=x; this.flagY=8; for(var y=8;y<=11;y++)this.set(x,y,15); this.set(x,12,2); };
 LV.prototype.mplat=function(x1,y1,x2,y2){ this.ents.push({k:"move",x:x1,y:y1,x2:x2,y2:y2}); };
+LV.prototype.cr=function(x,n){ for(var i=0;i<n;i++)this.set(x+i,11,16); }; /* 碎板:踩上1秒塌 */
+LV.prototype.cannon=function(x){ this.ent({k:"cannon",x:x,y:11}); }; /* 火球炮台 */
+LV.prototype.bigc=function(x,y,n){ n=n||1; for(var i=0;i<n;i++)this.coins.push({x:x+i,y:y,t:Math.random()*TAU,big:true}); };
 
 var LEVELS=[];
 function defLevel(w,name,theme,fn){ var lv=new LV(w,name,theme); fn(lv); lv.walls(); LEVELS.push(lv); }
@@ -335,6 +338,7 @@ function defLevel(w,name,theme,fn){ var lv=new LV(w,name,theme); fn(lv); lv.wall
 defLevel(112,"1-1 格莱美草原",0,function(g){
   g.ground(0,111); g.startX=3;
   g.coinRow(12,10,4);
+  g.bigc(18,9);
   g.q(20,8,1); g.brick(24,8,3); g.q(26,8,2); g.brick(28,8,3);
   g.wolf(36);
   g.pit(40,43);
@@ -617,7 +621,7 @@ defLevel(100,"4-4 牛模王的王座",3,function(g){
   g.flagX=-1;
 });
 /* ===== 第5世界:月面攻势(主题4 · 星空地球背景) ===== */
-defLevel(116,"5-1 问心月面基地",4,function(g){
+defLevel(116,"5-1 问芯月面基地",4,function(g){
   g.groundAll(); g.startX=3;
   g.coinRow(10,10,4); g.q(18,8,1);
   g.wolf(26);
@@ -633,7 +637,7 @@ defLevel(116,"5-1 问心月面基地",4,function(g){
   g.bird(96,6); g.wolf(100);
   g.flag(106);
 });
-defLevel(124,"5-2 万答环形山",4,function(g){
+defLevel(124,"5-2 万嗒环形山",4,function(g){
   g.groundAll(); g.startX=3;
   g.coinRow(8,10,4);
   g.pit(14,20); g.mplat(14,10,18,7);
@@ -650,7 +654,7 @@ defLevel(124,"5-2 万答环形山",4,function(g){
   g.pit(106,110); g.plat(107,9,2);
   g.flag(116);
 });
-defLevel(118,"5-3 智谱矩阵",4,function(g){
+defLevel(118,"5-3 蚩谱矩阵",4,function(g){
   g.groundAll(); g.startX=3;
   g.coinRow(8,9,4); g.q(16,8,3); g.brick(18,8,3);
   g.pipe(24,2); g.pipe(28,3);
@@ -813,14 +817,13 @@ extendLevels();
 
 /* ============ 全局状态 ============ */
 var GS={state:"title",li:0,score:0,coins:0,lives:5,time:300,hs:0,levelIntro:0,bossActive:false,boss:null,winT:0,
-  combo:0,bestCombo:0,perfect:false,auto:false,selIdx:0,springSq:0,sCoin:0,sKill:0,sBonus:0};
+  combo:0,bestCombo:0,perfect:false,auto:false,selIdx:0,springSq:0,sCoin:0,sKill:0,sBonus:0,holler:null,hollerT:0};
 var GT=0;
 try{ GS.hs=parseInt(localStorage.getItem("niu_best")||"0",10)||0; }catch(e){}
 var curLV=null,tiles=null,coinsEnt=[],ents=[],itms=[],bumps=[],fires=[];
 var camX=0;
 var PL={x:0,y:0,vx:0,vy:0,w:28,h:36,face:1,ground:false,coyote:0,jbuf:0,big:false,inv:0,star:0,dead:false,anim:0,prevY:0,squash:0,springK:0};
-function solid(c){ return c===1||c===2||c===3||c===4||c===5||c===6||c===7||c===8||c===13||c===14; }
-function tileAt(tx,ty){ if(tx<0||tx>=curLV.w||ty<0||ty>=curLV.h) return 0; return tiles[ty*curLV.w+tx]; }
+function solid(c){ return c===1||c===2||c===3||c===4||c===5||c===6||c===7||c===8||c===13||c===14; }function tileAt(tx,ty){ if(tx<0||tx>=curLV.w||ty<0||ty>=curLV.h) return 0; return tiles[ty*curLV.w+tx]; }
 function setTile(tx,ty,c){ if(tx>=0&&tx<curLV.w&&ty>=0&&ty<curLV.h) tiles[ty*curLV.w+tx]=c; }
 
 function loadLevel(i,fresh){
@@ -1157,7 +1160,7 @@ function updateEnemies(dt){
       /* 牛模王分身:追着牛来跑,撞墙小跳,踩头2次干掉 */
       if(e.hurtT>0){ e.hurtT-=dt; }
       else{
-        if(!e.met&&Math.abs(p.x-e.x)<430){ e.met=true; sNiuLai(); addShake(8); flash=0.4; popText(e.x+e.w/2,e.y-30,"牛来——!!","#ff5adf"); popText(PL.x+14,PL.y-52,"牛模王 拦路!","#c05aff"); }
+        if(!e.met&&Math.abs(p.x-e.x)<430){ e.met=true; sNiuLai(); addShake(8); flash=0.4; popText(e.x+e.w/2,e.y-30,"数据归我——!!","#ff5adf"); popText(PL.x+14,PL.y-52,"牛模王 拦路!","#c05aff"); }
         e.face=(p.x>e.x)?1:-1;
         var ms=Math.abs(p.x-e.x)<300?128:66;
         e.vx=e.face*ms; e.x+=e.vx*dt;
@@ -1304,6 +1307,7 @@ function startBossIntro(){
   GS.state="bossintro";
   musicStart(4);
   sWarn(); sHowl(); sNiuLai(); addShake(14); flash=0.7;
+  popText(86*T+55,12*T-122,"牛模王:把算力都给我!!","#ff2a9a");
   GS.boss={x:86*T,y:12*T-84,w:110,h:84,vx:0,face:-1,state:"idle",t:0,hp:5,maxhp:5,stun:0,warn:0,hurt:0,atk:1.2,dead:false,phase:1,thrown:false};
   spawnBoss3D();
 }
@@ -1478,7 +1482,46 @@ function groundBelow(tx,ty){
   for(var y=Math.max(0,ty);y<15;y++){ var c=tileAt(tx,y); if(solid(c)||c===9) return y; }
   return -1;
 }
+/* ============ 牛来模式驾驶:无敌穿墙·自动跳跃·见坑就跳·见boss就撞 ============ */
 function aiControl(dt){
+  var p=PL;
+  AIB.cool-=dt;
+  keys.run=true; keys.left=false; keys.right=true;
+  var px=p.x+p.w/2, feet=p.y+p.h;
+  var footRow=Math.max(0,Math.floor((feet-4)/T));
+  var wantJump=false, hold=0.55;
+  /* 前方没地面(坑/岩浆口) → 提前跳 */
+  var gapEdge=-1;
+  for(var d=10;d<=180;d+=10){
+    var gx=Math.floor((px+d)/T);
+    if(groundBelow(gx,Math.max(0,footRow))<0){ gapEdge=d; break; }
+  }
+  if(p.ground&&gapEdge>=0&&gapEdge<56){ wantJump=true; hold=0.62; }
+  /* 前方挡路(地面上的墙/管道) → 穿墙前先跳一下,免得贴脸难看 */
+  if(p.ground&&gapEdge<0){
+    var fx=Math.floor((px+34)/T);
+    if(solid(tileAt(fx,footRow-1))&&!solid(tileAt(fx,footRow-2))&&!solid(tileAt(fx,footRow+1))){ wantJump=true; hold=0.5; }
+  }
+  /* boss战:冲向牛模王,贴身就是撞,撞完反弹再回 */
+  if(GS.boss&&!GS.boss.dead&&GS.state==="play"){
+    var b=GS.boss, bx=b.x+b.w/2;
+    if(Math.abs(bx-px)>70){ keys.right=bx>px; keys.left=bx<px; }
+    else { keys.right=false; keys.left=false; if(p.ground) wantJump=true; }
+    if(px>92*T){ keys.right=false; keys.left=true; }
+    if(px<7*T){ keys.left=false; keys.right=true; }
+  }
+  /* 竞技场边缘:防止穿墙跑出地图(5-4/4-4 边界墙有限制) */
+  if(px>curLV.w*T-3*T){ keys.right=false; keys.left=true; }
+  /* 死亡回升后继续 */
+  if(!p.dead&&GS.state==="play"&&p.y>H+40&&GS.auto){
+    p.y=5*T; p.vy=-420;
+  }
+  /* 旗前停(自然触发过关) */
+  if(curLV.flagX>0&&px>curLV.flagX*T-26){ keys.right=false; keys.left=false; }
+  if(wantJump&&p.ground&&AIB.cool<=0){ justPressed.jump=true; AIB.cool=0.5; AIB.jH=hold; }
+  if(AIB.jH>0){ AIB.jH-=dt; keys.jump=true; } else keys.jump=false;
+}
+function aiControlOld(dt){
   var p=PL;
   AIB.cool-=dt;
   keys.run=true; keys.left=false; keys.right=true;
@@ -1599,6 +1642,7 @@ function update(dt){
   GT+=dt;
   if(freeze>0){ updateFX(dt); return; }
   if(GS.auto&&(GS.state==="play")) aiControl(dt);
+  if(GS.state==="play"&&GS.auto){ GS.hollerT=(GS.hollerT||0)-dt; if(GS.hollerT<=0){ niuHoller(NIUSAY[(Math.random()*NIUSAY.length)|0]); GS.hollerT=5.5+Math.random()*5; } }
   if(GS.state==="play"){ updatePlayer(dt); updateBoss(dt); updateFires(dt); }
   else if(GS.state==="bossintro"){
     GS.bossIntro-=dt;
@@ -1624,6 +1668,12 @@ function update(dt){
 var THREE_OK=false, scene=null, camera=null, renderer=null;
 var statics=null;
 var mCalf=null, mBoss=null;
+/* 牛来模式:霸屏喊话(妈妈梗) */
+var NIUSAY=["妈妈——!!","娘——!!","俺是牛来!!","哞——!!","牛来了,快跑!!","妈妈救我!!","给老子闪开!!","牛来·宇宙无敌!!","吃我一角!!","母亲大人,俺来啦!!","莫怕,娘在!!","牛来驾到,妈妈快看!!"];
+function niuHoller(txt){
+  GS.holler=txt; GS.hollerT=2.6;
+  popText(PL.x+14,PL.y-84,txt,"#ff5ad4");
+}
 var meshPool=[];
 if(typeof THREE!=="undefined"){
   try{
@@ -2256,7 +2306,9 @@ function sync3D(){
     mCalf.rotation.z=(moving?Math.sin(GT*13)*0.04:(PL.big?0:Math.sin(GT*2)*0.015))+lean;
     var sq=PL.squash>0?Math.sin(PL.squash/0.12*Math.PI):0;
     var stretch=(!PL.ground&&!inTitle)?clamp(-PL.vy*0.00022,-0.1,0.16):0;
-    var baseSc=PL.big?1.92:1.55;
+    /* 牛来模式:超级巨大型霸屏 */
+    var bgm=(GS.auto&&!PL.dead)?2.85:1;
+    var baseSc=(PL.big?1.92:1.55)*bgm;
     if(inTitle){ mCalf.scale.set(3.1,3.1,3.1); }
     else { mCalf.scale.y=baseSc*(1-sq*0.18+stretch); mCalf.scale.x=baseSc*(1+sq*0.12-stretch*0.6); }
     var legs=mCalf.userData.legs;
@@ -2274,6 +2326,10 @@ function sync3D(){
     else mCalf.traverse(function(o){ if(o.isMesh&&o.material&&o.material.emissive){ o.material.emissive.setHex(0x000000); o.material.emissiveIntensity=0;} });
     if(PL.inv>0&&(GT*12|0)%2===0) mCalf.visible=(GT*16|0)%2===0;
     else mCalf.visible=true;
+    /* 牛来模式:巨步震屏 */
+    if(GS.auto&&moving){ GS.__stompS=(GS.__stompS||0)+dt;
+      if(GS.__stompS>0.16){ GS.__stompS=0; addShake(2.2); burst(PL.x+14,PL.y+PL.h,"dust",3,130); }
+    }
     if(PL.dead){
       /* 死亡:向后侧翻倒下(不再倒立翻筋斗,不抽象) */
       var dk=Math.min(1,GS.deadT*3.2);
@@ -2512,10 +2568,20 @@ function mountain2D(c,x,base,h,w){
 }
 
 /* ==================== HUD ==================== */
+function hintText(c,txt,x,y,font,fill,align){ /* 带黑描边的文字:任何背景都看得清 */
+  if(align) c.textAlign=align;
+  c.font=font; c.lineWidth=4; c.lineJoin="round";
+  c.strokeStyle="rgba(8,10,20,0.88)";
+  c.strokeText(txt,x,y);
+  c.fillStyle=fill; c.fillText(txt,x,y);
+}
 function drawHUD2D(c){
-  c.save();
-  c.fillStyle="rgba(8,8,18,0.66)"; c.fillRect(0,0,W,50);
-  c.fillStyle="rgba(255,210,63,0.85)"; c.fillRect(0,50,W,2);
+  c.textBaseline="middle";
+  /* 顶部深色底条:文字不再糊在天空上 */
+  var hg=c.createLinearGradient(0,0,0,56);
+  hg.addColorStop(0,"rgba(8,10,20,0.62)");
+  hg.addColorStop(1,"rgba(8,10,20,0)");
+  c.fillStyle=hg; c.fillRect(0,0,W,56);
   c.save(); c.translate(24,25);
   c.beginPath(); c.arc(0,0,13,0,TAU); c.fillStyle="rgba(255,210,63,0.22)"; c.fill();
   c.fillStyle="#ffd23f"; c.beginPath(); c.arc(0,0,10,0,TAU); c.fill();
@@ -2525,36 +2591,30 @@ function drawHUD2D(c){
   c.restore();
   c.textBaseline="middle"; c.textAlign="left";
   c.font="bold 18px "+FONT;
-  c.fillStyle="#fff"; c.fillText("×"+Math.max(0,GS.lives),42,26);
+  hintText(c,"×"+Math.max(0,GS.lives),42,26,"bold 18px "+FONT,"#fff","left");
   c.fillStyle="#f4b840"; c.beginPath(); c.arc(96,25,7,0,TAU); c.fill();
-  c.fillStyle="#fff"; c.fillText("×"+GS.coins,108,26);
-  c.fillStyle="#ffd23f"; c.fillText(("0000000"+GS.score).slice(-7),168,26);
+  hintText(c,"×"+GS.coins,108,26,"bold 18px "+FONT,"#fff","left");
+  hintText(c,("0000000"+GS.score).slice(-7),168,26,"bold 18px "+FONT,"#ffd23f","left");
   c.textAlign="center";
-  c.fillStyle="rgba(255,255,255,0.92)"; c.font="14px "+FONT;
-  c.fillText(curLV?curLV.name:"",W/2,16);
-  c.fillStyle="rgba(160,220,255,0.8)"; c.font="11px "+FONT;
-  c.fillText(VER+" · "+(GS.hs>0?("最高 "+GS.hs):"牛来大冒险"),W/2,34);
+  hintText(c,curLV?curLV.name:"",W/2,16,"14px "+FONT,"rgba(255,255,255,0.95)","center");
+  hintText(c,VER+" · "+(GS.hs>0?("最高 "+GS.hs):"牛来大冒险"),W/2,34,"11px "+FONT,"rgba(160,220,255,0.95)","center");
   c.textAlign="right";
-  c.font="bold 24px "+FONT;
-  c.fillStyle=GS.time<30?"#ff5a5a":"#fff";
-  c.fillText(""+Math.max(0,Math.floor(GS.time)),W-20,25);
-  c.font="10px "+FONT; c.fillStyle="rgba(255,255,255,0.55)";
-  c.fillText("TIME",W-20,42);
-  if(muted){ c.fillStyle="rgba(255,120,120,0.8)"; c.fillText("MUTE",W-72,42); }
-  c.textAlign="left"; c.font="11px "+FONT; c.fillStyle="rgba(255,255,255,0.42)";
-  c.fillText("M静音 · P暂停 · R重开 · Esc选关 · O AI代打 · "+VER,16,H-12);
+  hintText(c,""+Math.max(0,Math.floor(GS.time)),W-20,25,"bold 24px "+FONT,GS.time<30?"#ff5a5a":"#fff","right");
+  hintText(c,"TIME",W-20,42,"10px "+FONT,"rgba(255,255,255,0.8)","right");
+  if(muted){ hintText(c,"MUTE",W-72,42,"10px "+FONT,"rgba(255,120,120,0.95)","right"); }
+  c.textAlign="left";
+  hintText(c,"M静音 · P暂停 · R重开 · Esc选关 · O牛来模式 · "+VER,16,H-12,"11px "+FONT,"rgba(255,255,255,0.85)","left");
   /* 空中连击 */
   if((GS.combo||0)>=2&&(GS.state==="play"||GS.state==="bossintro")){
     c.textAlign="center"; c.font="bold 22px "+FONT;
-    c.fillStyle=GS.combo>=5?"#ff5a5a":"#ffd23f";
-    c.fillText("COMBO x"+GS.combo,W/2,66+Math.sin(GT*10)*2);
+    hintText(c,"COMBO x"+GS.combo,W/2,66+Math.sin(GT*10)*2,"bold 22px "+FONT,GS.combo>=5?"#ff5a5a":"#ffd23f","center");
   }
-  /* AI 代打徽标 */
+  /* 牛来模式徽标 */
   if(GS.auto){
     c.save();
     c.globalAlpha=0.75+0.25*Math.sin(GT*4);
     c.fillStyle="#5ad4ff"; c.font="bold 15px "+FONT; c.textAlign="center";
-    c.fillText("[AI 自动闯关中]",W/2,H-40);
+    hintText(c,"[牛来模式 无敌闯关中]",W/2,H-40,"bold 15px "+FONT,"#5ad4ff","center");
     c.restore();
   }
   /* 牛模王血条 */
@@ -2566,8 +2626,7 @@ function drawHUD2D(c){
     var grd=c.createLinearGradient(bx,0,bx+bw,0);
     grd.addColorStop(0,"#ff5a5a"); grd.addColorStop(1,"#ffb03f");
     c.fillStyle=grd; c.fillRect(bx,H-31,bw*frac,12);
-    c.fillStyle="#fff"; c.font="bold 12px "+FONT; c.textAlign="left";
-    c.fillText("牛模王"+(GS.boss.phase===2?" · 过载":""),bx,H-42);
+    hintText(c,"牛模王"+(GS.boss.phase===2?" · 过载":""),bx,H-42,"bold 12px "+FONT,"#fff","left");
   }
   /* 小牛模王血条 */
   var mb=null;
@@ -2578,8 +2637,30 @@ function drawHUD2D(c){
     c.fillStyle="#3a2030"; c.fillRect(bx2,H-26,bw2,8);
     var fr2=Math.max(0,mb.hp/mb.maxhp);
     c.fillStyle="#c05aff"; c.fillRect(bx2,H-26,bw2*fr2,8);
-    c.fillStyle="#fff"; c.font="bold 10px "+FONT; c.textAlign="left";
-    c.fillText("牛模王分身",bx2,H-38);
+    hintText(c,"牛模王分身",bx2,H-38,"bold 10px "+FONT,"#fff","left");
+  }
+  /* 牛来模式:霸屏喊妈妈 */
+  if(GS.auto&&GS.holler&&GS.hollerT>0){
+    GS.hollerT-=1/60;
+    var hk=Math.min(1,(2.6-GS.hollerT)*6);
+    var hb=1+Math.abs(Math.sin(GT*7))*0.06;
+    var hs=Math.sin(Math.min(1,hk)*Math.PI/2)*(56*hb);
+    if(hs>2){
+      c.save();
+      c.translate(W/2,150);
+      c.rotate(Math.sin(GT*5)*0.03);
+      c.scale(hs/56,hs/56);
+      c.font="bold 56px "+FONT; c.textAlign="center"; c.textBaseline="middle";
+      var hg2=c.createLinearGradient(0,-28,0,28);
+      hg2.addColorStop(0,"#ff9adf"); hg2.addColorStop(0.5,"#ff5ad4"); hg2.addColorStop(1,"#ff2a9a");
+      c.lineWidth=10; c.lineJoin="round"; c.strokeStyle="rgba(10,4,24,0.95)";
+      c.strokeText(GS.holler,0,0);
+      c.fillStyle=hg2; c.fillText(GS.holler,0,0);
+      c.font="bold 20px "+FONT; c.fillStyle="#ffd23f";
+      c.lineWidth=6; c.strokeStyle="rgba(10,4,24,0.9)";
+      c.strokeText("妈妈!! 牛来霸屏!!",0,52); c.fillText("妈妈!! 牛来霸屏!!",0,52);
+      c.restore();
+    }
   }
 }
 
@@ -2702,11 +2783,10 @@ function drawTitle2D(c){
     c.fillStyle="rgba(255,255,255,0.75)"; c.font="15px "+FONT;
     c.fillText("3D · 手工建模 · 一车牛来了",txx,238);
     c.fillStyle="#fff"; c.font="bold 19px "+FONT;
-    c.fillText("点击 / Enter 选关开始",W/2,392+bob*0.4);
-    c.font="14px "+FONT; c.fillStyle="rgba(255,255,255,0.85)";
-    c.fillText("A = 观看 AI 全自动闯关 · ←→/AD 移动 · 空格 跳 · Shift 冲刺",W/2,424);
-    c.fillText("空中连踩出 COMBO · 全速冲刺撞飞敌人 · O 随时让 AI 代打",W/2,448);
-    if(GS.hs>0){ c.fillStyle="#ffd23f"; c.font="14px "+FONT; c.fillText("最高分 "+GS.hs,W/2,478); }
+    hintText(c,"点击 / Enter 选关开始",W/2,392+bob*0.4,"bold 19px "+FONT,"#fff","center");
+    hintText(c,"A = 牛来模式全自动闯关 · ←→/AD 移动 · 空格 跳 · Shift 冲刺",W/2,424,"14px "+FONT,"rgba(255,255,255,0.95)","center");
+    hintText(c,"空中连踩出 COMBO · 全速冲刺撞飞敌人 · O 随时开启牛来模式",W/2,448,"14px "+FONT,"rgba(255,255,255,0.95)","center");
+    if(GS.hs>0){ hintText(c,"最高分 "+GS.hs,W/2,478,"14px "+FONT,"#ffd23f","center"); }
   } else {
     c.fillStyle="#ffd23f"; c.font="bold 70px "+FONT;
     c.strokeStyle="#7a2a10"; c.lineWidth=13;
@@ -2715,10 +2795,9 @@ function drawTitle2D(c){
     c.fillStyle="#8ecbff"; c.font="bold 34px "+FONT;
     c.fillText("Ox is Coming",W/2,210+bob);
     c.fillStyle="#fff"; c.font="bold 20px "+FONT;
-    c.fillText("点击 / Enter 选关开始",W/2,330);
-    c.font="14px "+FONT; c.fillStyle="rgba(255,255,255,0.85)";
-    c.fillText("A = 观看 AI 全自动闯关",W/2,362);
-    if(GS.hs>0){ c.fillStyle="#ffd23f"; c.fillText("最高分 "+GS.hs,W/2,392); }
+    hintText(c,"点击 / Enter 选关开始",W/2,330,"bold 20px "+FONT,"#fff","center");
+    hintText(c,"A = 牛来模式全自动闯关",W/2,362,"14px "+FONT,"rgba(255,255,255,0.95)","center");
+    if(GS.hs>0){ hintText(c,"最高分 "+GS.hs,W/2,392,"14px "+FONT,"#ffd23f","center"); }
   }
   c.fillStyle="rgba(255,255,255,0.6)"; c.font="13px "+FONT;
   c.fillText("主角:牛来 · Boss:牛模王(Ox Alpha 模型成精) · "+VER+" · © 2026 MCapricorns · MIT",W/2,H-18);
