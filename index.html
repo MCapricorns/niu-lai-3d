@@ -54,7 +54,7 @@ console.warn( 'Scripts "build/three.js" and "build/three.min.js" are deprecated 
 ====================================================== */
 var W=960,H=600,T=40,S=0.08,TAU=Math.PI*2;
 var FONT='"ZCOOL KuaiLe","Microsoft YaHei",sans-serif';
-var VER="v1.4.1";
+var VER="v1.4.2";
 var GH={x:-1,y:-1,w:0,h:0}; /* 作者GitHub徽章热区 */
 function clamp(v,a,b){return v<a?a:(v>b?b:v);}
 function lerp(a,b,t){return a+(b-a)*t;}
@@ -105,22 +105,21 @@ function noise(d,vol,fp,when){
   g.gain.exponentialRampToValueAtTime(0.0001,t0+d);
   s.connect(f); f.connect(g); g.connect(sfxG); s.start(t0);
 }
-function sJump(){ if(!AC)return; /* 咩!短促牛叫 */
+function sJump(){ if(!AC)return; /* 哞!正宗短牛叫(慢振动低音,绝不放屁) */
   var t0=AC.currentTime;
   var o=AC.createOscillator(),g=AC.createGain();
   o.type="sawtooth";
-  o.frequency.setValueAtTime(250,t0);
-  o.frequency.linearRampToValueAtTime(360,t0+0.07);
-  o.frequency.linearRampToValueAtTime(300,t0+0.18);
+  o.frequency.setValueAtTime(150,t0);
+  o.frequency.linearRampToValueAtTime(195,t0+0.1);
+  o.frequency.linearRampToValueAtTime(140,t0+0.26);
   var lfo=AC.createOscillator(),lg=AC.createGain();
-  lfo.frequency.value=18; lg.gain.value=20; lfo.connect(lg); lg.connect(o.frequency);
-  var flt=AC.createBiquadFilter(); flt.type="lowpass"; flt.frequency.value=1200;
+  lfo.frequency.value=5.5; lg.gain.value=12; lfo.connect(lg); lg.connect(o.frequency);
+  var flt=AC.createBiquadFilter(); flt.type="lowpass"; flt.frequency.value=700;
   g.gain.setValueAtTime(0.0001,t0);
-  g.gain.exponentialRampToValueAtTime(0.2,t0+0.015);
-  g.gain.exponentialRampToValueAtTime(0.0001,t0+0.2);
+  g.gain.exponentialRampToValueAtTime(0.24,t0+0.03);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+0.28);
   o.connect(flt); flt.connect(g); g.connect(sfxG);
-  o.start(t0); o.stop(t0+0.22); lfo.start(t0); lfo.stop(t0+0.22);
-  tone(600,0.05,"square",0.04,900);
+  o.start(t0); o.stop(t0+0.3); lfo.start(t0); lfo.stop(t0+0.3);
 }
 function sCoin(){ if(!AC)return; var p=1+Math.random()*0.08;
   tone(988*p,0.07,"square",0.16); tone(1319*p,0.18,"square",0.14); }
@@ -1458,7 +1457,7 @@ function aiControl(dt){
     var wallHigh=solid(tileAt(cfx,cfy))&&solid(tileAt(cfx,cfy-1));
     if(!tgt&&p.ground&&wallLow){ wantJump=true; hold=0.5; }
     if(!tgt&&p.ground&&wallHigh){
-      if(Math.abs(p.vx)<240&&AIB.cool<=0){ AIB.mode="backoff"; AIB.modeT=0.6; AIB.cool=1.4; }
+      if(Math.abs(p.vx)<240&&AIB.cool<=0){ AIB.mode="backoff"; AIB.modeT=AIB.fails>0?0.85:0.6; AIB.cool=1.4; }
       else if(Math.abs(p.vx)>=240&&(gapEdge<0||gapEdge>60)){ wantJump=true; hold=0.62; }
     }
     /* —— 头顶?/砖块:对齐后跳起顶(主动吃奶/铃铛/星星/金币) —— */
@@ -1528,9 +1527,10 @@ function aiControl(dt){
     if(Math.abs(p.x-AIB.lastX)<6){ AIB.stuckT+=dt; } else { AIB.stuckT=0; AIB.lastX=p.x; }
     if(AIB.stuckT>1.0&&p.ground){
       AIB.fails++; AIB.stuckT=0;
-      if(AIB.fails%2===0){ AIB.mode="backoff"; AIB.modeT=0.6; }
+      if(AIB.fails%2===0||AIB.fails>=3){ AIB.mode="backoff"; AIB.modeT=AIB.fails>=3?1.0:0.6; } /* 连续失败:越退越远助跑 */
       else { wantJump=true; hold=0.62; }
     }
+    if(AIB.fails>0&&p.ground&&!wallHigh&&Math.abs(p.vx)>240){ AIB.fails=0; }
   }
   /* 冷却0.5s:防止土狼时间内空中二段跳(连跳bug) */
   if(wantJump&&p.ground&&AIB.cool<=0){ justPressed.jump=true; AIB.cool=0.5; AIB.jH=hold; }
@@ -2668,7 +2668,7 @@ function drawTitle2D(c){
   c.fillStyle="rgba(16,20,34,0.88)"; c.fillRect(gx2,gy2,gw2,gh2);
   c.strokeStyle="#6ea8ff"; c.lineWidth=2; c.strokeRect(gx2,gy2,gw2,gh2);
   c.fillStyle="#ffd23f"; c.font="bold 15px "+FONT; c.textAlign="center"; c.textBaseline="middle";
-  c.fillText("★ 点赞收藏 · github.com/MCapricorns",gx2+gw2/2,gy2+gh2/2+1);
+  c.fillText("★ 点赞收藏 · github.com/MCapricorns/niu-lai-3d",gx2+gw2/2,gy2+gh2/2+1);
   c.restore();
 }
 var SEL_COLS=4,SEL_CW=170,SEL_CH=86,SEL_GX=18,SEL_GY=14;
@@ -2737,7 +2737,7 @@ function drawWin2D(c){
   c.fillStyle="rgba(255,255,255,0.7)"; c.font="14px "+FONT;
   c.fillText("最高分 "+GS.hs,W/2,H/2+50);
   c.fillStyle="rgba(110,168,255,0.85)"; c.font="13px "+FONT;
-  c.fillText("★ github.com/MCapricorns · 点赞收藏",W/2,H/2+78);
+  c.fillText("★ github.com/MCapricorns/niu-lai-3d · 点赞收藏",W/2,H/2+78);
   c.fillStyle="#ffd23f"; c.font="bold 22px "+FONT;
   c.fillText("按 Enter / 点击 返回标题",W/2,H/2+110);
 }
@@ -2756,7 +2756,7 @@ cv.addEventListener("pointerdown",function(e){
   var r=cv.getBoundingClientRect();
   var mx=(e.clientX-r.left)*W/r.width, my=(e.clientY-r.top)*H/r.height;
   if(GS.state==="title"&&mx>=GH.x&&mx<=GH.x+GH.w&&my>=GH.y&&my<=GH.y+GH.h){
-    try{ window.open("https://github.com/MCapricorns","_blank"); }catch(err){}
+    try{ window.open("https://github.com/MCapricorns/niu-lai-3d","_blank"); }catch(err){}
     sClick(); return;
   }
   if(GS.state==="title"){ GS.state="select"; makeSky(); sClick(); }
