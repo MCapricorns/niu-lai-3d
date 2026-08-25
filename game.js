@@ -7,7 +7,7 @@
 ====================================================== */
 var W=960,H=600,T=40,S=0.08,TAU=Math.PI*2;
 var FONT='"ZCOOL KuaiLe","Microsoft YaHei",sans-serif';
-var VER="v1.6.0";
+var VER="v1.6.1";
 var GH={x:-1,y:-1,w:0,h:0}; /* 作者GitHub徽章热区 */
 var CLR={x:-1,y:-1,w:0,h:0}; /* 选关页"清空成绩"按钮热区 */
 function clamp(v,a,b){return v<a?a:(v>b?b:v);}
