@@ -7,7 +7,7 @@
 ====================================================== */
 var W=960,H=600,T=40,S=0.08,TAU=Math.PI*2;
 var FONT='"ZCOOL KuaiLe","Microsoft YaHei",sans-serif';
-var VER="v1.5.0";
+var VER="v1.6.0";
 var GH={x:-1,y:-1,w:0,h:0}; /* 作者GitHub徽章热区 */
 var CLR={x:-1,y:-1,w:0,h:0}; /* 选关页"清空成绩"按钮热区 */
 function clamp(v,a,b){return v<a?a:(v>b?b:v);}
@@ -611,7 +611,7 @@ defLevel(126,"4-3 曼巴火焰之路",3,function(g){
   g.leopard(110);
   g.flag(120);
 });
-defLevel(100,"4-4 Anthropic Dario",3,function(g){
+defLevel(100,"4-4 牛模王朝圣",3,function(g){
   g.ground(0,99); g.startX=6;
   g.solid(4,0,14); g.solid(95,0,14);
   g.coinRow(14,10,3); g.q(20,8,1);
@@ -671,26 +671,25 @@ defLevel(118,"5-3 蚩谱矩阵",4,function(g){
   g.pit(100,105); g.mplat(100,10,105,7);
   g.flag(110);
 });
-defLevel(110,"5-4 牛模王的服务器",4,function(g){
-  g.groundAll(); g.startX=3;
+defLevel(110,"5-4 Anthropic 的办公室",4,function(g){
+  g.ground(0,109); g.startX=3;
+  g.solid(4,0,14); g.solid(95,0,14); /* 决战办公室:两墙竞技场,决战区全程平地 */
   g.coinRow(10,9,4);
   g.ent({k:"miniboss",x:24});
-  g.pit(30,34); g.plat(30,10,3); g.coinRow(31,8,2);
   g.q(38,8,1); g.brick(40,8,2); g.q(42,8,3);
   g.ent({k:"miniboss",x:56});
   g.raven(64,6);
   g.spring(68); g.coinRow(68,5,4);
-  g.pit(72,77); g.mplat(72,10,77,7);
   g.brick(82,8,4); g.q(84,8,1);
   g.leopard(92);
-  g.flag(98);
+  g.flagX=-1;
 });
 
 /* ---------- 关卡加长:每关追加一段专属特色机关(16关16种玩法) ---------- */
 function extendLevels(){
   for(var i=0;i<LEVELS.length;i++){
     var old=LEVELS[i];
-    if(old.flagX<0) continue; /* 4-4 boss关保持原样 */
+    if(old.flagX<0) continue; /* 5-4 boss关保持原样 */
     var cut=old.flagX-6, w2=old.w+52;
     var lv=new LV(w2,old.name,old.theme);
     for(var x=0;x<cut;x++)for(var y=0;y<15;y++){ var c=old.get(x,y); if(c)lv.set(x,y,c); }
@@ -1047,7 +1046,7 @@ function updatePlayer(dt){
   if(curLV.flagX>0&&Math.abs((p.x+p.w/2)-curLV.flagX*T)<18&&p.y+10<12*T&&GS.state==="play"){
     startClear();
   }
-  if(GS.li===15&&!GS.bossActive&&!GS.boss&&p.x>24*T){
+  if(GS.li===19&&!GS.bossActive&&!GS.boss&&p.x>24*T){
     startBossIntro();
   }
   GS.time-=dt;
@@ -2819,7 +2818,7 @@ function drawOverlays(c){
     c.fillStyle="#ffd23f"; c.font="bold 42px "+FONT; c.textAlign="center"; c.textBaseline="middle";
     c.fillText(curLV.name,W/2,282);
     c.fillStyle="#fff"; c.font="16px "+FONT;
-    c.fillText(GS.li>=15?"Anthropic Dario 就在里面——踩爆它的服务器!":"冲呀——小心牛模王拦路!",W/2,330);
+    c.fillText(GS.li>=19?"Anthropic Dario 就在里面——踩爆它的办公室!":"冲呀——小心牛模王拦路!",W/2,330);
     c.globalAlpha=1;
   }
   if(GS.state==="bossintro"){
@@ -2949,7 +2948,7 @@ function drawSelect2D(c){
     if(blv>0){ c.fillStyle="rgba(255,210,63,0.8)"; c.font="11px "+FONT; c.fillText("最佳 "+blv,x+SEL_CW/2,y+59); }
   }
   c.fillStyle="rgba(255,255,255,0.5)"; c.font="12px "+FONT;
-  c.fillText("每关终点都有牛模王分身拦路 · 4-4 决战 Anthropic Dario · "+VER,W/2,H-24);
+  c.fillText("每关终点都有牛模王分身拦路 · 5-4 决战 Anthropic Dario · "+VER,W/2,H-24);
   /* 清空最佳/最高分 按钮 */
   if(GS.hs>0||(function(){ var any=false; for(var bi=0;bi<LEVELS.length;bi++){ try{ if((localStorage.getItem("niu_best_lv"+bi)||"0")!=="0"){ any=true; break; } }catch(e){} } return any; })()){
     CLR.x=12; CLR.y=14; CLR.w=120; CLR.h=34;
@@ -2997,9 +2996,20 @@ function loop(ts){
   requestAnimationFrame(loop);
   var dt=Math.min(0.05,(ts-lastT)/1000||0.016);
   lastT=ts;
-  update(dt);
-  render();
+  try{ update(dt); }catch(err){ LOG_ERR(err); }
+  try{ render(); }catch(err){ LOG_ERR(err); }
 }
+var _errLog={};
+function LOG_ERR(err){
+  try{
+    var msg=""+err;
+    var at=Date.now();
+    if(_errLog[msg]&&at-_errLog[msg]<1500) return; /* 同一错误1.5秒内只报一次 */
+    _errLog[msg]=at;
+    _errMsg=msg;
+  }catch(e2){}
+}
+var _errMsg="";
 cv.addEventListener("pointerdown",function(e){
   initAU(); if(AC&&AC.state==="suspended")AC.resume();
   var r=cv.getBoundingClientRect();
