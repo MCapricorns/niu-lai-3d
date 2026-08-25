@@ -877,8 +877,13 @@ function damagePlayer(){
 }
 function die(){
   if(PL.dead) return;
-  if(GS.auto){ /* 牛来模式:不灭,掉坑回升继续冲 */
-    PL.y=5*T; PL.vy=-420; sSpring();
+  if(GS.auto&&!GS.boss){ /* 牛来模式:不灭,掉坑直接回到当前列地面继续冲 */
+    var niRX=p.x+p.w/2;
+    var niGx=Math.floor(niRX/T);
+    var niGy=-1;
+    for(var niY2=12;niY2>=0;niY2--){ if(solid(tileAt(niGx,niY2))||tileAt(niGx,niY2)===9){ niGy=niY2; break; } }
+    if(niGy<0){ niGy=12; }
+    PL.y=niGy*T-PL.h-0.01; PL.vy=0;
     popText(PL.x+14,PL.y-30,"牛来不灭!","#5ad4ff");
     return;
   }
@@ -906,8 +911,10 @@ function stomp(e){
   PL.vy=keys.jump?-790:-470; PL.anim=0;
 }
 function collectCoin(c,fromBlock){
-  c.taken=true; GS.coins++; GS.score+=100; GS.sCoin+=100;
-  GS.streakT=1.6; GS.streak=(GS.streak||0)+1;
+  c.taken=true; GS.coins++; GS.streakT=1.6; GS.streak=(GS.streak||0)+1;
+  if(c.big){ GS.score+=500; GS.sCoin+=500; sCoin(GS.streak); burst(c.x,c.y,"spark",16,300);
+    popText(c.x,c.y-8,"大金币 +500","#ffd23f"); if(GS.coins%100===0){ GS.lives++; sOneUp(); } return; }
+  GS.score+=100; GS.sCoin+=100;
   if(GS.coins%100===0){ GS.lives++; sOneUp(); popText(PL.x+14,PL.y-30,"+1 命!","#7fff7f"); }
   sCoin(GS.streak);
   burst(c.x,c.y,"spark",6,180);
@@ -971,7 +978,20 @@ function updatePlayer(dt){
   p.vy+=grav*dt; p.vy=Math.min(p.vy,1000);
   p.prevY=p.y;
   p.x+=p.vx*dt; if(!GS.auto) collideX(p); /* 牛来模式:穿墙 */
-  p.y+=p.vy*dt; collideY(p);
+  p.y+=p.vy*dt;
+  if(GS.auto&&!PL.dead){ /* 牛来模式:贴地滑行,只吸底面,不卡箱子 */
+    var niB=Math.floor((p.y+3+p.h)/T),niTx0=Math.floor((p.x+4)/T),niTx1=Math.floor((p.x+p.w-4)/T);
+    var niLaid=false;
+    for(var niTx=niTx0;niTx<=niTx1;niTx++){
+      var niC=tileAt(niTx,niB);
+      if(solid(niC)){ p.y=niB*T-p.h-0.01; if(p.vy>0)p.vy=0; p.ground=true; niLaid=true; break; }
+      var niC2=tileAt(niTx,niB-1);
+      if((niC2===9||niC2===16)&&p.vy>=0){ p.y=(niB-1)*T-p.h-0.01; p.vy=0; p.ground=true; niLaid=true; break; }
+    }
+    if(!niLaid){ p.ground=false; }
+    p.hitB=niLaid; p.hitT=false; p.hitL=false; p.hitR=false;
+  }
+  else collideY(p);
   if(!p._wasG&&p.ground){
     if(p._vyPrev>420){ burst(p.x+14,p.y+p.h,"dust",7,140); addShake(Math.min(5,p._vyPrev/220)); part({x:p.x+14,y:p.y+p.h,vx:0,vy:0,g:0,life:0.3,t:0,type:"ring",size:4,col:"rgba(255,255,255,0.6)"}); }
     if(p.vy>=0) GS.combo=0; /* 落地清连击(弹簧不算) */
@@ -2382,8 +2402,8 @@ function sync3D(){
     mCalf.rotation.z=(moving?Math.sin(GT*13)*0.04:(PL.big?0:Math.sin(GT*2)*0.015))+lean;
     var sq=PL.squash>0?Math.sin(PL.squash/0.12*Math.PI):0;
     var stretch=(!PL.ground&&!inTitle)?clamp(-PL.vy*0.00022,-0.1,0.16):0;
-    /* 牛来模式:超级巨大型霸屏 */
-    var bgm=(GS.auto&&!PL.dead)?2.85:1;
+    /* 牛来模式:超级巨大型霸屏(2.4x 壮硕,相机同步拉远不挡路) */
+    var bgm=(GS.auto&&!PL.dead)?2.4:1;
     var baseSc=(PL.big?1.92:1.55)*bgm;
     if(inTitle){ mCalf.scale.set(3.1,3.1,3.1); }
     else { mCalf.scale.y=baseSc*(1-sq*0.18+stretch); mCalf.scale.x=baseSc*(1+sq*0.12-stretch*0.6); }
@@ -2402,9 +2422,9 @@ function sync3D(){
     else mCalf.traverse(function(o){ if(o.isMesh&&o.material&&o.material.emissive){ o.material.emissive.setHex(0x000000); o.material.emissiveIntensity=0;} });
     if(PL.inv>0&&(GT*12|0)%2===0) mCalf.visible=(GT*16|0)%2===0;
     else mCalf.visible=true;
-    /* 牛来模式:巨步震屏 */
+    /* 牛来模式:脚步震动(轻微) */
     if(GS.auto&&moving){ GS.__stompS=(GS.__stompS||0)+dt;
-      if(GS.__stompS>0.16){ GS.__stompS=0; addShake(2.2); burst(PL.x+14,PL.y+PL.h,"dust",3,130); }
+      if(GS.__stompS>0.28){ GS.__stompS=0; addShake(0.5); burst(PL.x+14,PL.y+PL.h,"dust",2,110); }
     }
     if(PL.dead){
       /* 死亡:向后侧翻倒下(不再倒立翻筋斗,不抽象) */
@@ -2553,8 +2573,11 @@ function updateCamera(){
   cx+=(shake>0?rnd(-shake,shake)*S:0);
   var cy=inTitle?worldY(H*0.5):worldY(H*0.5);
   cy+=(shake>0?rnd(-shake,shake)*S:0);
-  camera.position.set(cx,cy,CAMZ+((shake>0)?rnd(0,shake)*0.2:0));
+  /* 牛来模式:镜头拉远+抬高,巨型牛也能看清整条路 */
+  var niuZoom=GS.auto&&GS.state==="play"?1.16:1;
+  camera.position.set(cx,cy+(niuZoom-1)*6,CAMZ*niuZoom+((shake>0)?rnd(0,shake)*0.2:0));
   camera.lookAt(cx,cy,0);
+  if(camera.fov===(59*niuZoom)){} else { camera.fov=59*niuZoom; camera.updateProjectionMatrix(); }
 }
 var SKY_G=0;
 var CLOUDS2D=[];
