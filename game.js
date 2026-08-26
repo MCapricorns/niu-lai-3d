@@ -12,7 +12,7 @@ var W = 960,
   TAU = Math.PI * 2;
 var START_LIVES = 9;
 var FONT = '"ZCOOL KuaiLe","Microsoft YaHei",sans-serif';
-var VER = "v1.12.0";
+var VER = "v1.12.1";
 var GH = { x: -1, y: -1, w: 0, h: 0 }; /* 作者GitHub徽章热区 */
 var CLR = { x: -1, y: -1, w: 0, h: 0 }; /* 选关页"清空成绩"按钮热区 */
 function clamp(v, a, b) {
@@ -482,7 +482,7 @@ function noise2(d, vol, fp, when) {
 }
 
 /* ---------------- 输入 ---------------- */
-var keys = { left: false, right: false, run: false, jump: false, shoot: false };
+var keys = { left: false, right: false, run: false, jump: false };
 var keyMap = {
   ArrowLeft: "left",
   KeyA: "left",
@@ -497,8 +497,6 @@ var keyMap = {
   KeyZ: "jump",
   ArrowDown: "pound",
   KeyS: "pound",
-  KeyJ: "shoot",
-  KeyF: "shoot",
 };
 var justPressed = {};
 function resetKeys() {
@@ -506,7 +504,6 @@ function resetKeys() {
   keys.right = false;
   keys.run = false;
   keys.jump = false;
-  keys.shoot = false;
   justPressed = {};
 }
 window.addEventListener("keydown", function (e) {
@@ -630,7 +627,6 @@ if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
   bindTouch("btnJ", "jump", true);
   bindTouch("btnB", "run");
   bindTouch("btnP", "pound", true);
-  bindTouch("btnS", "shoot");
 }
 
 /* ---------------- 特效 ---------------- */
@@ -1349,9 +1345,7 @@ function updatePlayer(dt) {
       popText(p.x + 14, p.y - 16, "坐地重击!", "#ff9a3f");
     }
   }
-  /* 奶弹射击:按住连发,冷却限制 */
-  p.shotCd = Math.max(0, (p.shotCd || 0) - dt);
-  if (keys.shoot && p.shotCd <= 0 && !p.dead) fireShot();
+  /* 奶弹射击已改为 Boss 战自动开火,无手动按键 */
   /* 马里奥式重力:按住=飘,松开=截断;下落更重 */
   var grav = p.vy < 0 ? (keys.jump ? 1250 : 3300) : 2250;
   p.vy += grav * dt;
@@ -2358,9 +2352,9 @@ function overlap(ax, ay, aw, ah, bx, by, bw, bh) {
   return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
 
-/* ============ Final Boss: Anthropic Dario(紧凑竞技场 · 闪避+射击) ============
+/* ============ Final Boss: Anthropic Dario(紧凑竞技场 · 闪避+自动奶弹) ============
    循环:预警(红闪+音效) → 攻击(光束/弹幕/冲撞/砸地) → 护盾解除(金光,可输出)
-   躲避攻击 = 生存;抓住护盾解除窗口 = 奶弹(J)或踩头输出 */
+   躲避攻击 = 生存;抓住护盾解除窗口 = 牛来自动奶弹(或踩头)输出 */
 function bossVulnerable(b) {
   return b.state === "recover" || b.state === "stun";
 }
@@ -2630,10 +2624,17 @@ function sShoot() {
   tone(760, 0.09, "square", 0.12, 320);
   tone(1240, 0.05, "triangle", 0.06, 900);
 }
-function fireShot() {
-  var s = { x: PL.x + 14 + PL.face * 18, y: PL.y + 15, vx: PL.face * 470, t: 0 };
+function fireShot(tx, ty) {
+  /* 自动瞄准:朝目标 Boss 中心发射奶弹 */
+  var ax = tx - (PL.x + 14),
+    ay = ty - (PL.y + 15);
+  var al = Math.hypot(ax, ay) || 1;
+  var vx = (ax / al) * 470,
+    vy = (ay / al) * 470;
+  if (Math.abs(ax) > 8) PL.face = ax > 0 ? 1 : -1;
+  var s = { x: PL.x + 14 + PL.face * 18, y: PL.y + 15, vx: vx, vy: vy, t: 0 };
   shots.push(s);
-  PL.shotCd = 0.32;
+  PL.shotCd = 0.38;
   sShoot();
   if (THREE_OK && dynGroup) {
     var m = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff8e0 }));
@@ -2641,6 +2642,21 @@ function fireShot() {
     dynGroup.add(m);
     s.mesh = m;
   }
+}
+function bossTargetInRange() {
+  /* 仅 Boss 战自动开火:终 Boss 或视野内守关老板 */
+  if (GS.boss && !GS.boss.dead && GS.state === "play") {
+    return { x: GS.boss.x + GS.boss.w / 2, y: GS.boss.y + GS.boss.h / 2 };
+  }
+  var best = null;
+  for (var e = 0; e < ents.length; e++) {
+    if (ents[e].k !== "miniboss" || ents[e].dead || ents[e].gone) continue;
+    var ex = ents[e].x + ents[e].w / 2;
+    if (ex < camX - 80 || ex > camX + W + 80) continue;
+    best = { x: ex, y: ents[e].y + ents[e].h / 2 };
+    break;
+  }
+  return best;
 }
 function removeShot(i, hitFx) {
   var s = shots[i];
@@ -2663,10 +2679,15 @@ function defeatMiniBoss(e, how) {
   openGate();
 }
 function updateShots(dt) {
+  /* Boss 战自动射击:有目标且冷却好则自动开火 */
+  PL.shotCd = Math.max(0, (PL.shotCd || 0) - dt);
+  var tgt = bossTargetInRange();
+  if (tgt && PL.shotCd <= 0 && !PL.dead && GS.state === "play") fireShot(tgt.x, tgt.y);
   for (var i = shots.length - 1; i >= 0; i--) {
     var s = shots[i];
     s.t += dt;
     s.x += s.vx * dt;
+    s.y += (s.vy || 0) * dt;
     if (s.mesh) s.mesh.position.set(worldX(s.x), worldY(s.y), 1.4);
     var gone =
       solid(tileAt(Math.floor(s.x / T), Math.floor(s.y / T))) || s.t > 1.4 || s.x < camX - 120 || s.x > camX + W + 120;
@@ -3092,17 +3113,23 @@ function goldM() {
 }
 function makeTextSprite(txt, size, col) {
   var c = document.createElement("canvas");
-  c.width = 256;
+  c.width = 512;
   c.height = 128;
   var g = c.getContext("2d");
-  g.font = "bold 90px " + FONT;
+  var fs = 100;
+  g.font = "bold " + fs + "px " + FONT;
+  var tw = g.measureText(txt).width;
+  if (tw > 500) {
+    fs = Math.max(14, Math.floor((fs * 500) / tw));
+    g.font = "bold " + fs + "px " + FONT;
+  }
   g.textAlign = "center";
   g.textBaseline = "middle";
   g.strokeStyle = "#5a3a00";
-  g.lineWidth = 10;
-  g.strokeText(txt, 128, 64);
+  g.lineWidth = Math.max(fs * 0.11, 8);
+  g.strokeText(txt, 256, 64);
   g.fillStyle = col || "#fff";
-  g.fillText(txt, 128, 64);
+  g.fillText(txt, 256, 64);
   var tex = new THREE.CanvasTexture(c);
   var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
   sp.scale.set(size * 2, size, 1);
@@ -3560,6 +3587,20 @@ function buildBoss() {
   g.userData.head = head;
   /* 手臂保存给动画 */
   g.userData.arms = [armL, armR];
+  /* 长腿:西装裤+皮鞋,Boss 站姿不再像悬浮半截身子 */
+  var legL = box(0.36, 1.15, 0.34, 0x1c2a4a);
+  legL.position.set(-0.3, 0.58, 0);
+  g.add(legL);
+  var legR = box(0.36, 1.15, 0.34, 0x1c2a4a);
+  legR.position.set(0.3, 0.58, 0);
+  g.add(legR);
+  var shoeL = box(0.4, 0.16, 0.58, 0x2a1a10);
+  shoeL.position.set(-0.31, 0.08, 0.08);
+  g.add(shoeL);
+  var shoeR = box(0.4, 0.16, 0.58, 0x2a1a10);
+  shoeR.position.set(0.31, 0.08, 0.08);
+  g.add(shoeR);
+  g.userData.legs = [legL, legR];
   /* 招牌:BOSS 胸牌(写 A 不写真名) */
   var badge = box(0.16, 0.22, 0.05, 0xa89a7c);
   badge.position.set(-0.28, 2.1, 0.48);
@@ -3669,6 +3710,20 @@ function buildMiniBoss() {
   head.add(jaw);
   g.userData.head = head;
   g.userData.arms = [armL, armR];
+  /* 长腿:西装裤+皮鞋,站姿不再像悬浮半截身子 */
+  var legL = box(0.36, 1.1, 0.34, 0x14203e);
+  legL.position.set(-0.3, 0.56, 0);
+  g.add(legL);
+  var legR = box(0.36, 1.1, 0.34, 0x14203e);
+  legR.position.set(0.3, 0.56, 0);
+  g.add(legR);
+  var shoeL = box(0.4, 0.16, 0.56, 0x2a1a10);
+  shoeL.position.set(-0.31, 0.08, 0.08);
+  g.add(shoeL);
+  var shoeR = box(0.4, 0.16, 0.56, 0x2a1a10);
+  shoeR.position.set(0.31, 0.08, 0.08);
+  g.add(shoeR);
+  g.userData.legs = [legL, legR];
   /* 悬浮"GPT 算力标"(金色光环+光标):一眼=GPT老板 */
   var orbit = new THREE.Group();
   var ring = cyl(1.15, 1.15, 0.06, 0xffd23f, 16);
@@ -3860,7 +3915,7 @@ var THEME3 = [
     solid: 0xa8843a,
     q: 0xffc63f,
     plat: 0xe8c06a,
-    lava: 0xff6a1f,
+    lava: 0xf03020,
     spike: 0xc4b48f,
     deco: "tree",
   },
@@ -3871,7 +3926,7 @@ var THEME3 = [
     solid: 0x452222,
     q: 0xffc63f,
     plat: 0x7a4a3a,
-    lava: 0xff6a1f,
+    lava: 0xff2413,
     spike: 0x9aa0a8,
     deco: "rock",
   },
@@ -4085,10 +4140,10 @@ function buildServerRoom3D() {
   }
   var pipeA = cyl(0.2, 0.2, worldX(28 * T), 0x7b8494, 10);
   pipeA.rotation.z = Math.PI / 2;
-  pipeA.position.set(worldX(17 * T), floorY + 14, -4.4);
+  pipeA.position.set(worldX(17 * T), floorY + 24, -4.4);
   dynGroup.add(pipeA);
   var sign = makeTextSprite("ANTHROPIC 机房", 3.2, "#ff9adf");
-  sign.position.set(worldX(17 * T), floorY + 17, -3.8);
+  sign.position.set(worldX(17 * T), floorY + 27, -3.8);
   dynGroup.add(sign);
 }
 function buildWorld3D() {
@@ -4271,18 +4326,18 @@ function refreshWorldBlock(tx, ty) {
 function spawnBoss3D() {
   if (!THREE_OK || !GS.boss) return;
   mBoss = buildBoss();
-  mBoss.scale.setScalar(2.9);
+  mBoss.scale.setScalar(3.6);
   dynGroup.add(mBoss);
   /* 数据光束:预警红条 + 本体青白光柱 */
   var warnM = new THREE.Mesh(
-    new THREE.BoxGeometry(32 * 3.2, 0.5, 0.6),
-    new THREE.MeshBasicMaterial({ color: 0xff4a5a, transparent: true, opacity: 0.55 }),
+    new THREE.BoxGeometry(32 * 3.2, 3.2, 0.6),
+    new THREE.MeshBasicMaterial({ color: 0xff2438, transparent: true, opacity: 0.5 }),
   );
   warnM.visible = false;
   dynGroup.add(warnM);
   GS.__beamWarn = warnM;
   var beamM = new THREE.Mesh(
-    new THREE.BoxGeometry(32 * 3.2, 2 * 3.2 * 0.82, 1.5),
+    new THREE.BoxGeometry(32 * 3.2, 6.2, 1.5),
     new THREE.MeshBasicMaterial({ color: 0x9adfff, transparent: true, opacity: 0.85 }),
   );
   beamM.visible = false;
@@ -4611,7 +4666,7 @@ function sync3D() {
     } else sp2.visible = false;
   }
   if (instMatLava && instMatLava.emissiveIntensity !== undefined)
-    instMatLava.emissiveIntensity = 0.6 + Math.sin(GT * 6) * 0.25;
+    instMatLava.emissiveIntensity = 1.0 + Math.sin(GT * 6) * 0.35;
 }
 function renderPooledText(sp, txt, col) {
   if (!sp.userData.cv) {
@@ -5167,7 +5222,7 @@ function drawOverlays(c) {
     c.fillText("Anthropic Dario 苏醒了!!", W / 2, 286);
     c.font = "17px " + FONT;
     c.fillStyle = "#fff";
-    c.fillText("Anthropic Dario 接管了机房——躲开红光预警,护盾解除时用奶弹(J)轰他!", W / 2, 322);
+    c.fillText("Anthropic Dario 接管了机房——躲开红光预警,牛来会自动开火,护盾解除时轰他!", W / 2, 322);
   }
   if (GS.state === "winseq") {
     c.fillStyle = "rgba(0,0,0,0.35)";
@@ -5238,7 +5293,7 @@ function drawTitle2D(c) {
     hintText(c, "点击 / Enter 选关开始", W / 2, 392 + bob * 0.4, "bold 19px " + FONT, "#fff", "center");
     hintText(
       c,
-      "←→/AD 移动 · 空格跳 · Shift 冲刺 · J 奶弹 · 空中↓坐地重击",
+      "←→/AD 移动 · 空格跳 · Shift 冲刺 · 空中↓坐地重击 · Boss战时自动开火",
       W / 2,
       424,
       "14px " + FONT,

@@ -439,8 +439,8 @@ window.ME = (function () {
       Math.max(1, spikeCount),
     );
     instSpike.castShadow = true;
-    var lavaMat = new THREE.MeshLambertMaterial({ color: 0xff6a1f, emissive: 0xff3300, emissiveIntensity: 0.7 });
-    var instLava = new THREE.InstancedMesh(new THREE.BoxGeometry(TS, TS, ZD), lavaMat, Math.max(1, lavaCount));
+    var lavaMat = new THREE.MeshLambertMaterial({ color: theme.lava, emissive: theme.lava, emissiveIntensity: 1.1 });
+    var instLava = new THREE.InstancedMesh(new THREE.BoxGeometry(TS, TS * 0.94, ZD), lavaMat, Math.max(1, lavaCount));
     var m4 = new THREE.Matrix4(),
       q4 = new THREE.Quaternion();
     var si = 0,
@@ -456,7 +456,7 @@ window.ME = (function () {
           instSpike.setColorAt(si, new THREE.Color(theme.spike));
           si++;
         } else if (c === TILE.LAVA) {
-          m4.compose(new THREE.Vector3(px, py, 0), q4, new THREE.Vector3(1, 1, 1));
+          m4.compose(new THREE.Vector3(px, py - TS * 0.08, 0), q4, new THREE.Vector3(1, 1, 1));
           instLava.setMatrixAt(li, m4);
           li++;
         } else buildDynamic(tx, ty, c, cfg);

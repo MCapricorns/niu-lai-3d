@@ -495,7 +495,7 @@ try {
     if (mbE) {
       mbE.hurtT = 0;
       camX = mbE.x - 300;
-      shots.push({ x: mbE.x + mbE.w / 2, y: mbE.y + mbE.h / 2, vx: 0, t: 0 });
+      shots.push({ x: mbE.x + mbE.w / 2, y: mbE.y + mbE.h / 2, vx: 0, vy: 0, t: 0 });
       updateShots(0.016);
       out.bugs.shots.miniHit = mbE.hp < mbE.maxhp;
     }
@@ -506,12 +506,17 @@ try {
     camX = 0;
     bb.state = "idle";
     bb.hurt = 0;
-    shots.push({ x: bb.x + bb.w / 2, y: bb.y + bb.h / 2, vx: 0, t: 0 });
+    var shotsBefore = shots.length;
+    for (var af = 0; af < 30; af++) update(1 / 60);
+    out.bugs.shots.autoFire = shots.length > shotsBefore && bb.hp === bb.maxhp;
+    bb.hurt = 0;
+    bb.state = "idle";
+    shots.push({ x: bb.x + bb.w / 2, y: bb.y + bb.h / 2, vx: 0, vy: 0, t: 0 });
     updateShots(0.016);
     var hpAfterDeflect = bb.hp;
     bb.state = "recover";
     bb.hurt = 0;
-    shots.push({ x: bb.x + bb.w / 2, y: bb.y + bb.h / 2, vx: 0, t: 0 });
+    shots.push({ x: bb.x + bb.w / 2, y: bb.y + bb.h / 2, vx: 0, vy: 0, t: 0 });
     updateShots(0.016);
     out.bugs.shots.bossDeflectOK = hpAfterDeflect === bb.maxhp;
     out.bugs.shots.bossVulnHit = bb.hp < bb.maxhp;
@@ -624,6 +629,7 @@ try {
   check(result.bugs.goalState === "clear", "visible flag did not clear the level");
   check(result.bugs.bossTriggered, "final Boss did not show up when reached");
   /* v1.12 射击系统断言 */
+  check(result.bugs.shots && result.bugs.shots.autoFire, "milk shots did not auto-fire during boss fight");
   check(result.bugs.shots && result.bugs.shots.miniHit, "milk shots did not hurt the mini boss");
   check(result.bugs.shots && result.bugs.shots.bossDeflectOK, "boss shield did not deflect shots");
   check(result.bugs.shots && result.bugs.shots.bossVulnHit, "shots did not hurt the vulnerable boss");
