@@ -1,13 +1,15 @@
 "use strict";
 
 /**
- * Builds all level layouts. Keep tile placement and level-specific changes in
- * this file so gameplay, rendering, and input logic remain independent.
+ * Builds all level layouts. Every level is hand-placed around the real jump
+ * physics (hold-jump apex ≈4.7 tiles small / 6.4 big, spring ≈10.7, run-jump
+ * length ≈8 tiles) so obstacles are readable, demanding and never duplicated.
  *
  * Tile legend:
  * 0 empty, 1 ground, 2 solid, 3 brick, 4 coin box, 5 milk box,
  * 6 star box, 7 bell box, 8 used box, 9 one-way platform, 10 spike,
- * 11 lava, 12 spring, 13 pipe top, 14 pipe body, 15 flag, 16 crumble.
+ * 11 lava, 12 spring, 13 pipe top, 14 pipe body, 15 flag, 16 crumble,
+ * 17 gate (opens when the guarding GPT 老板 is defeated).
  */
 window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
   /* ---------- 关卡数据 ---------- */
@@ -46,6 +48,10 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
   LV.prototype.pit = function (x1, x2) {
     this.fill(x1, x2, 10, 14, 0);
   };
+  /* 实心高台:从 topRow 到 11 行的实心柱群(顶面即 topRow 行) */
+  LV.prototype.mesa = function (x1, x2, topRow) {
+    this.fill(x1, x2, topRow, 11, 2);
+  };
   LV.prototype.brick = function (x, y, n) {
     for (var i = 0; i < n; i++) this.set(x + i, y, 3);
   };
@@ -73,11 +79,11 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     o.k = o.k || "wolf";
     this.ents.push(o);
   };
-  LV.prototype.wolf = function (x) {
-    this.ent({ k: "wolf", x: x, y: 12 });
+  LV.prototype.wolf = function (x, y) {
+    this.ent({ k: "wolf", x: x, y: y === undefined ? 11 : y });
   };
-  LV.prototype.leopard = function (x) {
-    this.ent({ k: "leopard", x: x, y: 12 });
+  LV.prototype.leopard = function (x, y) {
+    this.ent({ k: "leopard", x: x, y: y === undefined ? 11 : y });
   };
   LV.prototype.raven = function (x, y) {
     this.ent({ k: "raven", x: x, y: y });
@@ -89,7 +95,10 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     this.set(x, y === undefined ? 12 : y, 12);
   };
   LV.prototype.spike = function (x, n) {
-    for (var i = 0; i < n; i++) this.set(x + i, 12, 10);
+    this.spikeAt(x, 12, n);
+  };
+  LV.prototype.spikeAt = function (x, y, n) {
+    for (var i = 0; i < n; i++) this.set(x + i, y, 10);
   };
   LV.prototype.lava = function (x, n) {
     for (var i = 0; i < n; i++) {
@@ -103,21 +112,27 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     this.set(x, top, 13);
     for (var y = top + 1; y <= 12; y++) this.set(x, y, 14);
   };
+  LV.prototype.cannon = function (x, y) {
+    this.ent({ k: "cannon", x: x, y: y === undefined ? 11.25 : y });
+  };
+  /* 旗门:守关老板死亡前封住旗杆(5..11 行铁柱,轰不开跳不过) */
+  LV.prototype.gate = function (x) {
+    for (var y = 5; y <= 11; y++) this.set(x, y, 17);
+  };
   LV.prototype.flag = function (x) {
     this.flagX = x;
     this.flagY = 8;
     for (var y = 8; y <= 11; y++) this.set(x, y, 15);
     this.set(x, 12, 2);
+    this.gate(x - 2); /* 旗门与旗杆绑定生成,保证守关 Boss 必打 */
   };
   LV.prototype.mplat = function (x1, y1, x2, y2) {
     this.ents.push({ k: "move", x: x1, y: y1, x2: x2, y2: y2 });
   };
-  LV.prototype.cr = function (x, n) {
-    for (var i = 0; i < n; i++) this.set(x + i, 11, 16);
-  }; /* 碎板:踩上1秒塌 */
-  LV.prototype.cannon = function (x) {
-    this.ent({ k: "cannon", x: x, y: 11 });
-  }; /* 火球炮台 */
+  LV.prototype.cr = function (x, n, y) {
+    var ry = y === undefined ? 11 : y;
+    for (var i = 0; i < n; i++) this.set(x + i, ry, 16);
+  }; /* 碎板:踩上0.75秒塌 */
   LV.prototype.bigc = function (x, y, n) {
     n = n || 1;
     for (var i = 0; i < n; i++) this.coins.push({ x: x + i, y: y, t: Math.random() * TAU, big: true });
@@ -131,972 +146,701 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     LEVELS.push(lv);
   }
 
-  defLevel(112, "1-1 格莱美草原", 0, function (g) {
-    g.ground(0, 111);
+  /* ================= 世界1 · 格莱美草原:把"真坑真跳"教会你 ================= */
+
+  defLevel(118, "1-1 格莱美草原", 0, function (g) {
     g.startX = 3;
-    g.coinRow(12, 10, 4);
-    g.bigc(18, 9);
-    g.q(20, 8, 1);
-    g.brick(24, 8, 3);
-    g.q(26, 8, 2);
-    g.brick(28, 8, 3);
-    g.wolf(36);
-    g.pit(40, 43);
-    g.coinArc(41, 10);
-    g.wolf(48);
-    g.wolf(52);
-    g.pit(55, 58);
-    g.plat(55, 10, 2);
-    g.coinRow(56, 9, 2);
+    g.groundAll();
+    g.coinRow(9, 10, 4);
+    g.bigc(14, 9);
+    g.pit(17, 19); /* 第一个真的坑:3格助跑跳 */
+    g.coinArc(17, 10);
+    g.wolf(25);
+    g.q(29, 8, 1);
+    g.brick(31, 8, 2);
+    g.q(34, 8, 4);
+    g.pipe(39, 2);
+    g.wolf(44);
+    g.pit(47, 51); /* 5格:需要按住跳 */
+    g.coinArc(48, 9);
+    g.leopard(57);
     g.spring(64);
-    g.coinRow(63, 6, 4);
-    g.q(70, 8, 1);
-    g.brick(72, 8, 2);
-    g.q(76, 8, 1);
-    g.raven(82, 6);
-    g.coinRow(84, 11, 5);
-    g.wolf(90);
-    g.leopard(95);
-    g.pit(96, 99);
-    g.mplat(96, 10, 101, 7);
-    g.bird(104, 7);
-    g.flag(105);
-  });
-  defLevel(118, "1-2 云雀千问", 0, function (g) {
-    g.ground(0, 117);
-    g.startX = 3;
-    g.coinRow(10, 9, 5);
-    g.plat(16, 9, 4);
-    g.coinRow(17, 8, 3);
-    g.bird(18, 6);
-    g.q(26, 8, 3);
-    g.brick(28, 8, 1);
-    g.q(30, 8, 1);
-    g.pipe(22, 2);
-    g.pipe(26, 3);
-    g.wolf(34);
-    g.wolf(38);
-    g.pit(42, 45);
-    g.plat(42, 10, 4);
-    g.spring(50);
-    g.coinRow(50, 7, 3);
-    g.raven(56, 7);
-    g.brick(60, 8, 4);
-    g.q(63, 8, 1);
-    g.pit(66, 70);
-    g.mplat(66, 10, 71, 7);
-    g.wolf(76);
-    g.leopard(80);
-    g.coinRow(84, 11, 6);
-    g.q(90, 8, 2);
-    g.plat(92, 9, 3);
-    g.coinRow(95, 7, 3);
-    g.pit(98, 101);
-    g.spring(105);
-    g.coinRow(104, 6, 4);
-    g.leopard(110);
+    g.pit(66, 70); /* 弹簧正好把人射过坑 */
+    g.coinArc(67, 8);
+    g.q(71, 6, 3); /* 弹簧二段:空中够到铃铛 */
+    g.pit(78, 83);
+    g.cr(79, 4); /* 第一座碎板桥:冲过去,别停 */
+    g.bird(88, 7);
+    g.raven(93, 6); /* 低空巡游:看准再走 */
+    g.pit(97, 100);
+    g.coinRow(97, 9, 4);
+    g.wolf(105);
+    /* 守关区 */
+    g.coinRow(104, 11, 3);
     g.flag(112);
   });
-  defLevel(122, "1-3 鸡屁踢山谷", 0, function (g) {
-    g.ground(0, 121);
+
+  defLevel(122, "1-2 云雀千问", 0, function (g) {
     g.startX = 3;
-    g.coinRow(8, 10, 4);
-    g.wolf(15);
-    g.pit(18, 22);
-    g.plat(18, 9, 2);
-    g.coinArc(20, 8);
-    g.q(26, 8, 1);
-    g.q(28, 8, 2);
-    g.brick(32, 8, 5);
-    g.q(34, 8, 1);
-    g.pit(40, 43);
-    g.spring(46);
-    g.coinRow(46, 5, 5);
-    g.wolf(52);
-    g.wolf(56);
-    g.raven(60, 6);
-    g.pit(64, 69);
-    g.mplat(64, 10, 69, 7);
-    g.coinRow(66, 8, 3);
-    g.bird(72, 7);
-    g.brick(76, 8, 4);
-    g.q(79, 8, 3);
-    g.coinRow(80, 11, 4);
-    g.wolf(88);
-    g.pit(91, 94);
-    g.plat(91, 9, 4);
-    g.q(98, 8, 1);
-    g.q(100, 8, 1);
-    g.leopard(104);
-    g.wolf(109);
-    g.pit(112, 115);
-    g.spring(117);
-    g.coinRow(116, 5, 3);
-    g.flag(118);
-  });
-  defLevel(126, "1-4 草原图灵", 0, function (g) {
-    g.ground(0, 125);
-    g.startX = 3;
-    g.coinRow(6, 9, 5);
-    g.q(14, 8, 1);
-    g.wolf(20);
-    g.wolf(24);
-    g.pit(28, 31);
-    g.coinArc(29, 9);
-    g.raven(34, 7);
-    g.raven(38, 6);
-    g.brick(42, 8, 6);
-    g.q(44, 8, 1);
-    g.q(46, 8, 3);
-    g.pit(50, 54);
-    g.mplat(50, 10, 55, 6);
-    g.spring(60);
-    g.coinRow(59, 5, 4);
-    g.wolf(66);
-    g.leopard(70);
-    g.leopard(74);
-    g.pit(78, 82);
-    g.plat(78, 8, 2);
-    g.coinRow(80, 7, 2);
-    g.bird(86, 7);
-    g.q(90, 8, 2);
-    g.q(92, 8, 1);
-    g.wolf(96);
-    g.pit(100, 104);
-    g.mplat(100, 10, 106, 10);
-    g.spring(108);
-    g.coinRow(108, 5, 4);
-    g.leopard(114);
-    g.wolf(118);
-    g.flag(120);
-  });
-  defLevel(114, "2-1 逗包戈壁", 1, function (g) {
-    g.ground(0, 113);
-    g.startX = 3;
-    g.wolf(12);
-    g.coinRow(10, 10, 3);
-    g.pit(18, 21);
-    g.coinArc(19, 9);
-    g.q(26, 8, 1);
-    g.q(28, 8, 1);
-    g.leopard(34);
-    g.wolf(38);
-    g.pit(42, 46);
-    g.plat(42, 9, 3);
-    g.raven(50, 6);
-    g.spring(54);
-    g.coinRow(54, 6, 4);
-    g.pit(60, 63);
-    g.spring(66);
-    g.wolf(72);
-    g.leopard(76);
-    g.brick(80, 8, 5);
-    g.q(82, 8, 3);
-    g.pit(88, 92);
-    g.mplat(88, 10, 93, 7);
-    g.bird(96, 6);
-    g.wolf(100);
-    g.coinRow(104, 11, 4);
-    g.flag(108);
-  });
-  defLevel(120, "2-2 奇米仙人谷", 1, function (g) {
-    g.ground(0, 119);
-    g.startX = 3;
-    g.coinRow(8, 9, 4);
-    g.wolf(14);
-    g.pit(18, 22);
-    g.plat(18, 9, 2);
-    g.coinArc(20, 8);
-    g.q(26, 8, 2);
-    g.pipe(24, 2);
-    g.pipe(30, 4);
-    g.leopard(32);
-    g.pit(36, 40);
-    g.spring(42);
-    g.q(46, 8, 1);
-    g.coinRow(48, 11, 4);
-    g.raven(54, 6);
-    g.raven(58, 7);
-    g.pit(62, 66);
-    g.mplat(62, 10, 67, 7);
-    g.brick(70, 8, 4);
-    g.q(72, 8, 3);
-    g.leopard(78);
-    g.wolf(82);
-    g.pit(86, 89);
-    g.plat(86, 9, 4);
-    g.spring(94);
-    g.coinRow(93, 5, 3);
-    g.bird(100, 6);
-    g.pit(104, 108);
-    g.mplat(105, 10, 108, 10);
-    g.wolf(112);
-    g.flag(114);
-  });
-  defLevel(126, "2-3 maxmini沙丘", 1, function (g) {
-    g.ground(0, 125);
-    g.startX = 3;
-    g.wolf(10);
-    g.leopard(14);
-    g.leopard(18);
-    g.pit(24, 27);
-    g.spring(30);
-    g.coinRow(29, 6, 4);
-    g.q(36, 8, 1);
-    g.q(38, 8, 1);
-    g.q(40, 8, 2);
-    g.pit(44, 49);
-    g.mplat(45, 10, 49, 7);
-    g.raven(54, 6);
-    g.brick(58, 8, 5);
-    g.q(60, 8, 3);
-    g.coinRow(62, 11, 4);
-    g.pit(68, 72);
-    g.plat(69, 9, 3);
-    g.wolf(76);
-    g.leopard(80);
-    g.spring(84);
-    g.coinRow(84, 5, 4);
-    g.pit(90, 94);
-    g.mplat(90, 10, 95, 10);
-    g.bird(98, 7);
-    g.q(102, 8, 1);
-    g.wolf(106);
-    g.leopard(110);
-    g.pit(114, 117);
-    g.spring(119);
-    g.coinRow(118, 5, 3);
-    g.flag(121);
-  });
-  defLevel(130, "2-4 深思遗迹", 1, function (g) {
-    g.ground(0, 129);
-    g.startX = 3;
-    g.coinRow(8, 9, 4);
-    g.q(16, 8, 1);
-    g.wolf(22);
-    g.leopard(26);
-    g.pit(30, 34);
-    g.plat(30, 9, 2);
-    g.raven(38, 7);
-    g.spring(42);
-    g.coinRow(42, 6, 4);
-    g.pit(48, 52);
-    g.mplat(48, 10, 53, 6);
-    g.brick(56, 8, 6);
-    g.q(58, 8, 1);
-    g.q(60, 8, 3);
-    g.leopard(68);
-    g.wolf(72);
-    g.pit(76, 80);
-    g.plat(77, 8, 3);
-    g.bird(84, 6);
-    g.q(88, 8, 2);
-    g.wolf(92);
-    g.leopard(96);
-    g.pit(100, 105);
-    g.mplat(101, 10, 104, 10);
-    g.spring(108);
-    g.coinRow(108, 5, 4);
-    g.wolf(114);
-    g.leopard(118);
-    g.pit(122, 125);
-    g.coinArc(123, 9);
-    g.flag(126);
-  });
-  defLevel(114, "3-1 月之阳面", 2, function (g) {
-    g.ground(0, 113);
-    g.startX = 3;
-    g.coinRow(10, 9, 4);
-    g.q(18, 8, 1);
-    g.wolf(24);
-    g.pit(28, 31);
-    g.coinArc(29, 9);
-    g.q(36, 8, 2);
-    g.spring(40);
-    g.coinRow(40, 6, 4);
-    g.wolf(46);
-    g.raven(50, 6);
-    g.pit(54, 58);
-    g.plat(54, 9, 3);
-    g.brick(62, 8, 4);
-    g.q(64, 8, 3);
-    g.leopard(70);
-    g.pit(74, 78);
-    g.mplat(74, 10, 79, 7);
-    g.bird(82, 6);
-    g.wolf(86);
-    g.wolf(90);
-    g.coinRow(94, 11, 5);
-    g.pit(98, 101);
-    g.spring(104);
-    g.coinRow(103, 5, 3);
-    g.flag(108);
-  });
-  defLevel(122, "3-2 克老得冰谷", 2, function (g) {
-    g.ground(0, 121);
-    g.startX = 3;
-    g.coinRow(8, 10, 4);
-    g.wolf(16);
-    g.pit(20, 24);
-    g.plat(20, 9, 2);
-    g.coinArc(22, 8);
-    g.q(28, 8, 1);
-    g.pipe(26, 2);
-    g.pipe(33, 3);
-    g.raven(38, 6);
-    g.spring(40);
-    g.coinRow(40, 5, 4);
-    g.leopard(42);
-    g.wolf(46);
-    g.pit(50, 55);
-    g.mplat(50, 10, 55, 7);
-    g.brick(58, 8, 5);
-    g.q(60, 8, 3);
-    g.bird(66, 6);
-    g.pit(70, 74);
-    g.plat(70, 9, 3);
-    g.wolf(78);
-    g.leopard(82);
-    g.q(86, 8, 2);
-    g.coinRow(88, 11, 4);
-    g.pit(94, 98);
-    g.mplat(94, 10, 99, 10);
-    g.spring(102);
-    g.coinRow(102, 5, 4);
-    g.raven(108, 7);
-    g.flag(116);
-  });
-  defLevel(126, "3-3 羊驼雪峰", 2, function (g) {
-    g.ground(0, 125);
-    g.startX = 3;
-    g.wolf(12);
-    g.leopard(16);
-    g.pit(20, 23);
-    g.spring(26);
-    g.q(30, 8, 1);
-    g.coinRow(32, 11, 4);
-    g.pit(36, 41);
-    g.mplat(37, 10, 41, 6);
-    g.raven(46, 6);
-    g.brick(50, 8, 6);
-    g.q(52, 8, 1);
-    g.q(54, 8, 2);
-    g.pit(60, 64);
-    g.plat(60, 8, 2);
-    g.wolf(68);
-    g.leopard(72);
-    g.bird(76, 7);
-    g.spring(80);
-    g.coinRow(80, 5, 4);
-    g.pit(86, 91);
-    g.mplat(86, 10, 91, 7);
-    g.wolf(96);
-    g.q(100, 8, 3);
-    g.pit(104, 108);
-    g.plat(104, 9, 3);
-    g.raven(112, 6);
-    g.coinRow(114, 11, 4);
-    g.flag(120);
-  });
-  defLevel(130, "3-4 格罗可雪原", 2, function (g) {
-    g.ground(0, 129);
-    g.startX = 3;
-    g.coinRow(8, 9, 4);
-    g.q(16, 8, 1);
-    g.wolf(22);
-    g.leopard(26);
-    g.pit(30, 35);
-    g.mplat(30, 10, 35, 7);
-    g.spring(38);
-    g.coinRow(38, 5, 4);
-    g.raven(44, 6);
-    g.raven(48, 7);
-    g.brick(52, 8, 6);
-    g.q(54, 8, 2);
-    g.q(56, 8, 3);
-    g.leopard(64);
-    g.wolf(68);
-    g.pit(72, 76);
-    g.plat(72, 8, 3);
-    g.bird(80, 6);
-    g.q(84, 8, 1);
-    g.coinRow(86, 11, 5);
-    g.pit(92, 97);
-    g.mplat(92, 10, 97, 10);
-    g.wolf(100);
-    g.leopard(104);
-    g.spring(108);
-    g.coinRow(108, 5, 4);
-    g.pit(114, 118);
-    g.plat(114, 9, 3);
-    g.raven(122, 6);
-    g.flag(124);
-  });
-  defLevel(114, "4-1 柴特鸡屁踢", 3, function (g) {
-    g.ground(0, 113);
-    g.startX = 3;
-    g.coinRow(10, 9, 4);
-    g.lava(18, 3);
-    g.coinArc(19, 9);
-    g.q(26, 8, 1);
-    g.wolf(30);
-    g.lava(34, 4);
-    g.plat(34, 10, 4);
-    g.spring(42);
-    g.coinRow(42, 5, 4);
-    g.raven(48, 6);
-    g.q(52, 8, 2);
-    g.lava(56, 4);
-    g.mplat(56, 10, 61, 7);
-    g.wolf(64);
-    g.leopard(68);
-    g.lava(72, 3);
-    g.brick(76, 8, 4);
-    g.q(78, 8, 3);
-    g.pit(82, 85);
-    g.wolf(88);
-    g.coinRow(90, 11, 4);
-    g.lava(94, 5);
-    g.mplat(95, 10, 98, 10);
-    g.spring(102);
-    g.coinRow(102, 5, 3);
-    g.flag(108);
-  });
-  defLevel(120, "4-2 索拉裂谷", 3, function (g) {
-    g.ground(0, 119);
-    g.startX = 3;
-    g.coinRow(8, 10, 3);
-    g.wolf(14);
-    g.lava(18, 3);
-    g.coinArc(19, 9);
-    g.q(26, 8, 1);
-    g.pipe(24, 2);
-    g.pipe(29, 4);
-    g.raven(36, 6);
-    g.lava(40, 5);
-    g.mplat(40, 10, 45, 7);
-    g.spring(42);
-    g.q(46, 8, 2);
-    g.wolf(52);
-    g.leopard(56);
-    g.lava(60, 4);
-    g.plat(60, 9, 4);
-    g.brick(68, 8, 5);
-    g.q(70, 8, 3);
-    g.lava(76, 4);
-    g.spring(82);
-    g.coinRow(81, 5, 4);
-    g.wolf(88);
-    g.leopard(92);
-    g.lava(96, 5);
-    g.mplat(96, 10, 101, 10);
-    g.bird(104, 6);
-    g.q(108, 8, 1);
-    g.flag(114);
-  });
-  defLevel(126, "4-3 曼巴火焰之路", 3, function (g) {
-    g.ground(0, 125);
-    g.startX = 3;
-    g.wolf(10);
-    g.leopard(14);
-    g.lava(18, 3);
-    g.coinArc(19, 9);
-    g.q(24, 8, 1);
-    g.spring(28);
-    g.coinRow(28, 5, 4);
-    g.lava(34, 5);
-    g.mplat(34, 10, 39, 6);
-    g.raven(44, 6);
-    g.brick(48, 8, 6);
-    g.q(50, 8, 2);
-    g.q(52, 8, 3);
-    g.wolf(60);
-    g.lava(64, 4);
-    g.plat(64, 9, 4);
-    g.spring(72);
-    g.coinRow(72, 5, 4);
-    g.leopard(78);
-    g.lava(82, 6);
-    g.mplat(82, 10, 87, 7);
-    g.wolf(92);
-    g.bird(96, 6);
-    g.lava(100, 4);
-    g.coinRow(101, 9, 3);
-    g.q(106, 8, 1);
-    g.leopard(110);
-    g.flag(120);
-  });
-  defLevel(100, "4-4 GPT 老板朝圣", 3, function (g) {
-    g.ground(0, 99);
-    g.startX = 6;
-    g.solid(4, 0, 14);
-    g.solid(95, 0, 14);
-    g.coinRow(14, 10, 3);
-    g.q(20, 8, 1);
-    g.lava(26, 4);
-    g.mplat(26, 10, 31, 10);
-    g.coinRow(36, 10, 3);
-    g.brick(64, 8, 4);
-    g.q(66, 8, 1);
-    g.coinRow(78, 10, 3);
-    g.flag(90);
-  });
-  /* ===== 第5世界:月面攻势(主题4 · 星空地球背景) ===== */
-  defLevel(116, "5-1 问芯月面基地", 4, function (g) {
     g.groundAll();
-    g.startX = 3;
-    g.coinRow(10, 10, 4);
-    g.q(18, 8, 1);
-    g.wolf(26);
-    g.pit(30, 34);
-    g.plat(30, 10, 2);
-    g.coinArc(31, 7);
-    g.spring(38);
-    g.coinRow(38, 5, 4);
-    g.q(44, 8, 2);
-    g.brick(46, 8, 2);
-    g.q(48, 8, 1);
-    g.raven(54, 6);
-    g.pit(58, 63);
-    g.mplat(58, 10, 63, 7);
-    g.leopard(68);
-    g.wolf(72);
-    g.brick(76, 8, 4);
-    g.q(78, 8, 3);
-    g.pit(82, 86);
-    g.plat(83, 9, 2);
-    g.coinRow(85, 7, 2);
-    g.spring(90);
-    g.coinRow(90, 5, 3);
-    g.bird(96, 6);
-    g.wolf(100);
-    g.flag(106);
-  });
-  defLevel(124, "5-2 万嗒环形山", 4, function (g) {
-    g.groundAll();
-    g.startX = 3;
     g.coinRow(8, 10, 4);
-    g.pit(14, 20);
-    g.mplat(14, 10, 18, 7);
-    g.pit(24, 31);
-    g.mplat(24, 9, 29, 6);
-    g.coinRow(26, 5, 3);
-    g.wolf(34);
-    g.pit(38, 46);
-    g.plat(39, 10, 2);
-    g.plat(43, 8, 2);
-    g.q(50, 8, 1);
-    g.raven(54, 6);
-    g.pit(58, 66);
-    g.mplat(58, 10, 64, 7);
-    g.spring(70);
-    g.coinRow(70, 5, 4);
-    g.leopard(76);
-    g.wolf(80);
-    g.pit(84, 90);
-    g.mplat(84, 9, 89, 9);
-    g.coinRow(88, 7, 2);
-    g.brick(94, 8, 4);
-    g.q(96, 8, 2);
-    g.bird(102, 6);
-    g.pit(106, 110);
-    g.plat(107, 9, 2);
-    g.flag(116);
-  });
-  defLevel(118, "5-3 质朴矩阵", 4, function (g) {
-    g.groundAll();
-    g.startX = 3;
-    g.coinRow(8, 9, 4);
-    g.q(16, 8, 3);
-    g.brick(18, 8, 3);
+    g.pit(13, 18); /* 独木桥:两块单格浮板 */
+    g.plat(14, 10, 1);
+    g.plat(16, 10, 1);
+    g.coin(14, 9);
+    g.coin(16, 9);
+    g.bird(15, 6);
     g.pipe(24, 2);
     g.pipe(28, 3);
     g.wolf(34);
-    g.brick(38, 8, 6);
-    g.q(40, 8, 1);
-    g.q(42, 8, 2);
-    g.pit(48, 52);
-    g.plat(48, 9, 3);
-    g.raven(56, 6);
-    g.solid(60, 9, 11);
-    g.solid(61, 9, 11);
-    g.plat(60, 7, 2);
-    g.coinRow(60, 6, 2);
-    g.brick(66, 8, 5);
-    g.q(68, 8, 3);
-    g.leopard(76);
-    g.wolf(80);
-    g.pit(84, 88);
-    g.spring(90);
-    g.coinRow(90, 5, 4);
-    g.bird(96, 6);
-    g.pit(100, 105);
-    g.mplat(100, 10, 105, 7);
-    g.flag(110);
-  });
-  defLevel(110, "5-4 Anthropic 机房", 4, function (g) {
-    g.ground(0, 109);
-    g.startX = 6;
-    g.solid(4, 0, 14);
-    g.solid(95, 0, 14); /* Server-room arena: spawn safely inside both walls. */
-    g.coinRow(10, 9, 4);
-    g.q(18, 8, 2);
-    g.brick(20, 8, 3);
-    g.q(38, 8, 1);
-    g.brick(40, 8, 2);
-    g.q(42, 8, 3);
-    g.spring(68);
-    g.coinRow(68, 5, 4);
-    g.brick(82, 8, 4);
-    g.q(84, 8, 1);
-    g.flagX = -1;
+    g.leopard(38);
+    g.spring(43);
+    g.plat(42, 6, 4); /* 高空金币线 */
+    g.coinRow(42, 5, 4);
+    g.q(45, 5, 6); /* 星星在高处 */
+    g.pit(49, 54);
+    g.raven(51, 8); /* 坑口正上方盘旋:算好起跳时机 */
+    g.pit(58, 64);
+    g.mplat(58, 10, 63, 7); /* 斜向渡板(也可硬跳) */
+    g.coinRow(59, 8, 3);
+    g.pit(69, 75);
+    g.cr(70, 5);
+    g.wolf(81);
+    g.leopard(85);
+    g.wolf(89);
+    g.mesa(94, 95, 11);
+    g.mesa(99, 100, 10); /* 双台阶 */
+    g.pit(103, 106);
+    g.plat(104, 9, 2);
+    g.raven(109, 7);
+    g.flag(114);
   });
 
-  /* ---------- 关卡加长:专属挑战 + 两段安全变奏，兼顾长度与人工可达性 ---------- */
-  function extendLevels() {
-    for (var i = 0; i < LEVELS.length; i++) {
-      var old = LEVELS[i];
-      if (old.flagX < 0) continue; /* Keep the final Boss arena unchanged. */
-      var cut = old.flagX - 6,
-        w2 = old.w + 140;
-      var lv = new LV(w2, old.name, old.theme);
-      for (var x = 0; x < cut; x++)
-        for (var y = 0; y < 15; y++) {
-          var c = old.get(x, y);
-          if (c) lv.set(x, y, c);
-        }
-      for (var e2 = 0; e2 < old.ents.length; e2++) {
-        if (old.ents[e2].x < cut - 4) lv.ents.push(old.ents[e2]);
-      }
-      for (var c2 = 0; c2 < old.coins.length; c2++) {
-        if (old.coins[c2].x < cut - 2) lv.coins.push(old.coins[c2]);
-      }
-      lv.startX = old.startX;
-      lv.ground(cut, w2 - 1);
-      featureSection(lv, cut, i % 15);
-      safeSection(lv, cut + 44, i * 2);
-      safeSection(lv, cut + 88, i * 2 + 1);
-      lv.flag(w2 - 6);
-      lv.walls();
-      LEVELS[i] = lv;
-    }
-  }
-  function featureSection(lv, x0, idx) {
-    lv.coinRow(x0 + 3, 10, 3);
-    switch (idx) {
-      case 0 /* 1-1 弹簧高塔+金币拱门 */:
-        lv.spring(x0 + 6);
-        lv.coinRow(x0 + 5, 6, 4);
-        lv.plat(x0 + 12, 8, 3);
-        lv.coinRow(x0 + 12, 7, 3);
-        lv.spring(x0 + 18);
-        lv.coinArc(x0 + 24, 7);
-        lv.plat(x0 + 22, 6, 3);
-        lv.q(x0 + 27, 6, 1);
-        lv.wolf(x0 + 34);
-        lv.coinRow(x0 + 32, 11, 4);
-        break;
-      case 1 /* 1-2 云雀护送走廊 */:
-        lv.plat(x0 + 5, 10, 3);
-        lv.bird(x0 + 6, 7);
-        lv.plat(x0 + 11, 8, 3);
-        lv.bird(x0 + 12, 5);
-        lv.coinRow(x0 + 11, 7, 3);
-        lv.plat(x0 + 17, 9, 2);
-        lv.coinArc(x0 + 17, 7);
-        lv.plat(x0 + 23, 7, 3);
-        lv.coinRow(x0 + 23, 6, 3);
-        lv.bird(x0 + 24, 4);
-        lv.leopard(x0 + 32);
-        lv.coinRow(x0 + 30, 11, 5);
-        break;
-      case 2 /* 1-3 双层砖阵 */:
-        lv.brick(x0 + 5, 8, 6);
-        lv.q(x0 + 8, 8, 2);
-        lv.brick(x0 + 14, 10, 4);
-        lv.plat(x0 + 14, 7, 4);
-        lv.coinRow(x0 + 14, 6, 4);
-        lv.pit(x0 + 20, x0 + 24);
-        lv.plat(x0 + 20, 9, 2);
-        lv.coinArc(x0 + 21, 7);
-        lv.brick(x0 + 28, 8, 5);
-        lv.q(x0 + 30, 8, 1);
-        lv.wolf(x0 + 36);
-        lv.wolf(x0 + 39);
-        break;
-      case 3 /* 1-4 交叉移动平台 */:
-        lv.pit(x0 + 4, x0 + 12);
-        lv.mplat(x0 + 4, 10, x0 + 9, 6);
-        lv.pit(x0 + 14, x0 + 22);
-        lv.mplat(x0 + 14, 6, x0 + 19, 10);
-        lv.coinRow(x0 + 8, 5, 3);
-        lv.coinRow(x0 + 16, 10, 3);
-        lv.pit(x0 + 24, x0 + 30);
-        lv.plat(x0 + 25, 8, 2);
-        lv.coinRow(x0 + 27, 7, 2);
-        lv.leopard(x0 + 36);
-        lv.q(x0 + 38, 8, 3);
-        break;
-      case 4 /* 2-1 尖刺窄桥 */:
-        lv.spike(x0 + 5, 3);
-        lv.plat(x0 + 5, 9, 3);
-        lv.coinRow(x0 + 5, 8, 3);
-        lv.spike(x0 + 12, 4);
-        lv.plat(x0 + 12, 8, 2);
-        lv.coinArc(x0 + 13, 6);
-        lv.raven(x0 + 18, 6);
-        lv.spike(x0 + 22, 3);
-        lv.spring(x0 + 27);
-        lv.coinRow(x0 + 26, 5, 4);
-        lv.wolf(x0 + 34);
-        lv.coinRow(x0 + 33, 11, 4);
-        break;
-      case 5 /* 2-2 管道峡谷 */:
-        lv.pipe(x0 + 5, 2);
-        lv.pipe(x0 + 9, 3);
-        lv.coinRow(x0 + 6, 7, 2);
-        lv.pipe(x0 + 14, 4);
-        lv.coinArc(x0 + 15, 6);
-        lv.pipe(x0 + 20, 2);
-        lv.pipe(x0 + 24, 3);
-        lv.coinRow(x0 + 21, 6, 2);
-        lv.leopard(x0 + 30);
-        lv.wolf(x0 + 34);
-        break;
-      case 6 /* 2-3 沙丘弹跳长廊 */:
-        lv.spring(x0 + 4);
-        lv.spring(x0 + 8);
-        lv.spring(x0 + 12);
-        lv.coinRow(x0 + 3, 5, 3);
-        lv.coinRow(x0 + 7, 4, 3);
-        lv.coinRow(x0 + 11, 5, 3);
-        lv.q(x0 + 16, 8, 2);
-        lv.raven(x0 + 19, 6);
-        lv.spring(x0 + 24);
-        lv.coinArc(x0 + 25, 6);
-        lv.leopard(x0 + 32);
-        lv.leopard(x0 + 36);
-        break;
-      case 7 /* 2-4 遗迹塌方 */:
-        lv.brick(x0 + 4, 10, 2);
-        lv.brick(x0 + 4, 9, 2);
-        lv.q(x0 + 6, 8, 1);
-        lv.solid(x0 + 10, 9, 11);
-        lv.solid(x0 + 11, 9, 11);
-        lv.plat(x0 + 10, 7, 2);
-        lv.brick(x0 + 16, 8, 4);
-        lv.coinRow(x0 + 16, 7, 4);
-        lv.pit(x0 + 22, x0 + 26);
-        lv.mplat(x0 + 22, 10, x0 + 26, 7);
-        lv.wolf(x0 + 32);
-        lv.q(x0 + 35, 8, 3);
-        break;
-      case 8 /* 3-1 冰湖独木跳 */:
-        lv.pit(x0 + 4, x0 + 7);
-        lv.plat(x0 + 5, 10, 1);
-        lv.pit(x0 + 9, x0 + 13);
-        lv.plat(x0 + 10, 9, 1);
-        lv.plat(x0 + 12, 10, 1);
-        lv.pit(x0 + 15, x0 + 20);
-        lv.plat(x0 + 16, 9, 1);
-        lv.plat(x0 + 18, 8, 1);
-        lv.coinArc(x0 + 17, 6);
-        lv.bird(x0 + 23, 6);
-        lv.wolf(x0 + 30);
-        lv.coinRow(x0 + 28, 11, 5);
-        break;
-      case 9 /* 3-2 冰雪双桥 */:
-        lv.pit(x0 + 4, x0 + 10);
-        lv.plat(x0 + 5, 10, 2);
-        lv.plat(x0 + 8, 8, 2);
-        lv.coinRow(x0 + 8, 7, 2);
-        lv.pit(x0 + 13, x0 + 19);
-        lv.mplat(x0 + 13, 9, x0 + 18, 9);
-        lv.coinRow(x0 + 15, 7, 3);
-        lv.q(x0 + 23, 8, 2);
-        lv.raven(x0 + 26, 6);
-        lv.leopard(x0 + 32);
-        lv.wolf(x0 + 36);
-        break;
-      case 10 /* 3-3 雪峰之字攀登 */:
-        lv.plat(x0 + 4, 10, 2);
-        lv.plat(x0 + 8, 8, 2);
-        lv.plat(x0 + 12, 6, 2);
-        lv.coinRow(x0 + 8, 7, 2);
-        lv.coinRow(x0 + 12, 5, 2);
-        lv.plat(x0 + 17, 8, 2);
-        lv.plat(x0 + 21, 10, 2);
-        lv.spring(x0 + 26);
-        lv.coinRow(x0 + 25, 5, 3);
-        lv.q(x0 + 31, 8, 1);
-        lv.wolf(x0 + 35);
-        lv.leopard(x0 + 38);
-        break;
-      case 11 /* 3-4 暴风雪渡鸦群 */:
-        lv.raven(x0 + 5, 6);
-        lv.raven(x0 + 9, 7);
-        lv.raven(x0 + 13, 5);
-        lv.coinRow(x0 + 5, 10, 3);
-        lv.coinRow(x0 + 10, 9, 3);
-        lv.plat(x0 + 17, 8, 3);
-        lv.coinRow(x0 + 17, 7, 3);
-        lv.raven(x0 + 23, 6);
-        lv.spring(x0 + 28);
-        lv.q(x0 + 32, 8, 3);
-        lv.leopard(x0 + 37);
-        break;
-      case 12 /* 4-1 熔岩弹簧跳 */:
-        lv.lava(x0 + 4, 3);
-        lv.spring(x0 + 3);
-        lv.coinRow(x0 + 3, 5, 3);
-        lv.lava(x0 + 9, 4);
-        lv.plat(x0 + 10, 9, 2);
-        lv.coinArc(x0 + 10, 7);
-        lv.lava(x0 + 16, 3);
-        lv.spring(x0 + 15);
-        lv.coinRow(x0 + 15, 5, 3);
-        lv.lava(x0 + 22, 4);
-        lv.mplat(x0 + 22, 10, x0 + 26, 10);
-        lv.wolf(x0 + 32);
-        lv.coinRow(x0 + 30, 11, 4);
-        break;
-      case 13 /* 4-2 岩浆平台接力 */:
-        lv.lava(x0 + 4, 6);
-        lv.mplat(x0 + 4, 10, x0 + 8, 7);
-        lv.lava(x0 + 11, 6);
-        lv.mplat(x0 + 12, 8, x0 + 15, 10);
-        lv.coinRow(x0 + 6, 6, 3);
-        lv.coinRow(x0 + 13, 10, 3);
-        lv.lava(x0 + 19, 6);
-        lv.plat(x0 + 20, 9, 2);
-        lv.plat(x0 + 23, 8, 2);
-        lv.q(x0 + 28, 8, 2);
-        lv.raven(x0 + 31, 6);
-        lv.leopard(x0 + 36);
-        break;
-      default: /* 4-3 火焰尖刺混跑 */
-        lv.lava(x0 + 4, 3);
-        lv.spike(x0 + 9, 2);
-        lv.plat(x0 + 9, 9, 2);
-        lv.coinRow(x0 + 4, 10, 3);
-        lv.lava(x0 + 14, 4);
-        lv.spring(x0 + 13);
-        lv.coinRow(x0 + 13, 5, 3);
-        lv.raven(x0 + 20, 6);
-        lv.lava(x0 + 23, 3);
-        lv.plat(x0 + 23, 9, 3);
-        lv.q(x0 + 29, 8, 1);
-        lv.wolf(x0 + 33);
-        lv.leopard(x0 + 37);
-    }
-  }
-  function safeSection(lv, x0, variant) {
-    lv.coinRow(x0 + 2, 10, 4);
-    switch (variant % 5) {
-      case 0 /* Short pit, spring arc, and a readable enemy finish. */:
-        lv.brick(x0 + 7, 9, 3);
-        lv.q(x0 + 8, 9, 1);
-        lv.wolf(x0 + 14);
-        lv.pit(x0 + 18, x0 + 21);
-        lv.plat(x0 + 19, 10, 2);
-        lv.coinArc(x0 + 19, 8);
-        lv.spring(x0 + 26);
-        lv.coinRow(x0 + 25, 6, 4);
-        lv.leopard(x0 + 34);
-        break;
-      case 1 /* Crumble bridge: the lower floor keeps first-time players safe. */:
-        lv.q(x0 + 6, 8, 2);
-        lv.cr(x0 + 11, 5);
-        lv.coinRow(x0 + 11, 9, 5);
-        lv.spring(x0 + 20);
-        lv.raven(x0 + 25, 6);
-        lv.brick(x0 + 29, 8, 4);
-        lv.q(x0 + 31, 8, 3);
-        break;
-      case 2 /* Pipes remain below the held-jump clearance. */:
-        lv.pipe(x0 + 6, 2);
-        lv.pipe(x0 + 11, 3);
-        lv.coinRow(x0 + 7, 7, 3);
-        lv.pit(x0 + 17, x0 + 20);
-        lv.plat(x0 + 18, 10, 2);
-        lv.coinArc(x0 + 18, 8);
-        lv.spring(x0 + 25);
-        lv.wolf(x0 + 31);
-        lv.leopard(x0 + 35);
-        break;
-      case 3 /* Spikes are covered by visible platforms; no blind leap is required. */:
-        lv.spike(x0 + 6, 2);
-        lv.plat(x0 + 6, 9, 2);
-        lv.coinRow(x0 + 6, 8, 2);
-        lv.pit(x0 + 14, x0 + 18);
-        lv.plat(x0 + 15, 9, 3);
-        lv.coinRow(x0 + 15, 8, 3);
-        lv.q(x0 + 24, 8, 1);
-        lv.raven(x0 + 28, 6);
-        lv.spring(x0 + 33);
-        break;
-      default: /* Stair climb, big-coin reward, then a four-tile pit. */
-        lv.plat(x0 + 5, 10, 2);
-        lv.plat(x0 + 9, 8, 2);
-        lv.plat(x0 + 13, 6, 2);
-        lv.coinRow(x0 + 9, 7, 2);
-        lv.bigc(x0 + 14, 5);
-        lv.pit(x0 + 19, x0 + 22);
-        lv.plat(x0 + 20, 10, 2);
-        lv.coinArc(x0 + 20, 8);
-        lv.wolf(x0 + 28);
-        lv.leopard(x0 + 34);
-    }
-  }
-  function addSafetyRoutes() {
-    for (var li = 0; li < LEVELS.length; li++) {
-      var lv = LEVELS[li],
-        x = 1;
-      while (x < lv.w - 1) {
-        var ground = lv.get(x, 12);
-        if (ground !== 0 && ground !== 10 && ground !== 11) {
-          x++;
-          continue;
-        }
-        var start = x,
-          kind = ground;
-        while (x < lv.w - 1 && lv.get(x, 12) === kind) x++;
-        var end = x - 1,
-          len = end - start + 1;
-        if (kind !== 10 && len < 3) continue;
-        var allCrumble = true;
-        for (var cx = start; cx <= end; cx++) {
-          if (lv.get(cx, 11) !== 16) {
-            allCrumble = false;
-            break;
-          }
-        }
-        if (allCrumble) continue;
-        if (start > 1 && lv.get(start - 1, 12) === 1) lv.spring(start - 1);
-        for (var px = start; px <= end; px++) {
-          var bridged = false;
-          for (var py = 10; py <= 11; py++) {
-            var pc = lv.get(px, py);
-            if (pc === 9 || pc === 16) {
-              bridged = true;
-              break;
-            }
-          }
-          if (!bridged) lv.set(px, 10, 9);
-        }
-      }
-      /* Tall pipes and walls get a visible spring-assisted approach. */
-      for (var wx2 = 3; wx2 < lv.w - 2; wx2++) {
-        if (solidLevelTile(lv.get(wx2, 11)) && solidLevelTile(lv.get(wx2, 10)) && lv.get(wx2 - 2, 12) === 1) {
-          lv.spring(wx2 - 2);
-        }
-      }
-    }
-  }
-  function solidLevelTile(c) {
-    return c === 1 || c === 2 || c === 3 || c === 4 || c === 5 || c === 6 || c === 7 || c === 8 || c === 13 || c === 14;
-  }
-  extendLevels();
-  addSafetyRoutes();
+  defLevel(124, "1-3 鸡屁踢山谷", 0, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 3);
+    g.spike(12, 3); /* 尖刺走廊:走上面的薄台 */
+    g.plat(12, 9, 3);
+    g.coinRow(12, 8, 3);
+    g.spike(18, 4);
+    g.plat(18, 9, 4);
+    g.wolf(26);
+    g.pit(30, 33);
+    g.spike(37, 3); /* 无台:直接跳过刺带 */
+    g.brick(41, 8, 5);
+    g.q(43, 8, 5);
+    g.leopard(49);
+    g.spike(55, 6); /* 岩谷名场面:碎板桥横越尖刺 */
+    g.cr(55, 6);
+    g.coinRow(55, 9, 6);
+    g.pit(65, 68);
+    g.coinArc(66, 9);
+    g.raven(71, 6);
+    g.raven(75, 7);
+    g.spring(79);
+    g.plat(78, 5, 3);
+    g.bigc(79, 4);
+    g.wolf(85);
+    g.leopard(89);
+    g.pipe(93, 3);
+    g.spike(99, 4);
+    g.plat(99, 9, 4);
+    g.pit(105, 111);
+    g.mplat(105, 10, 110, 6);
+    g.coinRow(107, 8, 3);
+    g.flag(117);
+  });
+
+  defLevel(130, "1-4 草原图灵", 0, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 4);
+    g.wolf(13);
+    g.pit(17, 23); /* 7格:移动平台摆渡 */
+    g.mplat(17, 10, 22, 10);
+    g.pit(27, 37); /* 双斜坡接力 */
+    g.mplat(27, 10, 32, 6);
+    g.mplat(32, 6, 37, 10);
+    g.coinRow(30, 5, 3);
+    g.leopard(43);
+    g.wolf(46);
+    g.spike(50, 4);
+    g.plat(50, 9, 4);
+    g.q(56, 8, 2);
+    g.brick(58, 8, 3);
+    g.raven(62, 6);
+    g.raven(66, 8);
+    g.mesa(70, 72, 9); /* 平顶丘跳跃 */
+    g.pit(73, 76);
+    g.mesa(77, 79, 9);
+    g.coinRow(70, 8, 3);
+    g.spring(84);
+    g.coinRow(83, 4, 5); /* 春天般的金币雨 */
+    g.pit(89, 96);
+    g.cr(90, 6);
+    g.wolf(101);
+    g.wolf(104);
+    g.wolf(107);
+    g.pit(111, 114);
+    g.coinArc(112, 9);
+    g.flag(122);
+  });
+
+  /* ================= 世界2 · 戈壁沙海:火球炮台登场 ================= */
+
+  defLevel(122, "2-1 逗包戈壁", 1, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 3);
+    g.cannon(15); /* 第一座炮台:跳过火球或踩爆它 */
+    g.wolf(21);
+    g.pit(25, 28);
+    g.cannon(33);
+    g.leopard(37);
+    g.cannon(45);
+    g.spike(49, 3); /* 双炮交叉火力夹刺带 */
+    g.cannon(54);
+    g.coinArc(50, 9);
+    g.q(59, 8, 1);
+    g.pipe(63, 2);
+    g.pipe(67, 4);
+    g.pipe(71, 4);
+    g.cannon(71, 7.25); /* 管顶炮台 */
+    g.pit(76, 80);
+    g.plat(77, 9, 3);
+    g.raven(85, 6);
+    g.spring(90);
+    g.coinRow(89, 5, 4);
+    g.pit(95, 101);
+    g.cr(96, 5);
+    g.leopard(105);
+    g.cannon(109);
+    g.flag(115);
+  });
+
+  defLevel(126, "2-2 奇米仙人谷", 1, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 9, 4);
+    g.pipe(13, 2);
+    g.wolf(17);
+    g.pipe(21, 3);
+    g.leopard(26);
+    g.pipe(30, 4);
+    g.cannon(34);
+    g.brick(40, 6, 9); /* 低顶砖洞(地板干净):小心撞头 */
+    g.q(44, 6, 4);
+    g.wolf(45);
+    g.pit(52, 56);
+    g.plat(53, 9, 3);
+    g.raven(61, 6);
+    g.raven(64, 8);
+    g.spring(69);
+    g.plat(68, 5, 4);
+    g.coinRow(68, 4, 4);
+    g.q(71, 4, 6);
+    g.pit(75, 79);
+    g.cr(76, 3);
+    g.spike(84, 3);
+    g.plat(84, 9, 3);
+    g.wolf(90);
+    g.leopard(93);
+    g.cannon(99);
+    g.pit(104, 108);
+    g.coinArc(105, 9);
+    g.mplat(104, 10, 108, 7);
+    g.raven(113, 6);
+    g.flag(119);
+  });
+
+  defLevel(128, "2-3 maxmini沙丘", 1, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 3);
+    g.mesa(13, 15, 11); /* 沙丘阶梯 */
+    g.mesa(20, 22, 10);
+    g.pit(26, 29);
+    g.mesa(30, 32, 10);
+    g.coinRow(20, 9, 3);
+    g.spike(38, 3);
+    g.mesa(43, 45, 9);
+    g.pit(46, 49); /* 从丘顶飞跃 */
+    g.cannon(54);
+    g.cannon(62); /* 平地双炮 */
+    g.wolf(58);
+    g.pit(67, 75);
+    g.mplat(68, 10, 74, 10); /* 渡板(可绕行硬跳) */
+    g.coinRow(69, 7, 4);
+    g.leopard(80);
+    g.leopard(84);
+    g.spring(89);
+    g.coinRow(88, 5, 5);
+    g.bigc(91, 4);
+    g.pit(94, 98);
+    g.cr(95, 3);
+    g.mesa(103, 105, 11);
+    g.mesa(108, 110, 10);
+    g.raven(114, 6);
+    g.flag(121);
+  });
+
+  defLevel(130, "2-4 深思遗迹", 1, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 9, 4);
+    g.plat(12, 10, 2); /* 遗迹天梯 */
+    g.plat(16, 8, 2);
+    g.plat(20, 6, 2);
+    g.coinRow(12, 9, 2);
+    g.coinRow(16, 7, 2);
+    g.q(20, 5, 2);
+    g.solid(26, 8, 11); /* 高墙(4格):用墙前弹簧满速起跳翻越 */
+    g.spring(23);
+    g.plat(27, 6, 3);
+    g.coinRow(27, 5, 3);
+    g.raven(34, 6);
+    g.raven(38, 7);
+    g.raven(42, 5);
+    g.pit(47, 53);
+    g.mplat(48, 10, 52, 7);
+    g.brick(57, 8, 5);
+    g.q(59, 8, 1);
+    g.leopard(64);
+    g.wolf(67);
+    g.pit(72, 76);
+    g.spike(78, 3);
+    g.plat(78, 9, 3);
+    g.pit(85, 97); /* 双段碎板长桥 */
+    g.cr(86, 5);
+    g.solid(92, 11, 11);
+    g.cr(93, 4);
+    g.coinRow(87, 9, 4);
+    g.wolf(102);
+    g.leopard(106);
+    g.cannon(111);
+    g.pit(116, 119);
+    g.coinArc(117, 9);
+    g.flag(123);
+  });
+
+  /* ================= 世界3 · 冰谷雪峰:精准落点 ================= */
+
+  defLevel(122, "3-1 月之阳面", 2, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 4);
+    /* 冰湖独木桩:高低错落的立柱 */
+    g.pit(13, 60);
+    g.mesa(15, 16, 10);
+    g.mesa(20, 21, 11);
+    g.mesa(24, 25, 9);
+    g.mesa(29, 30, 11);
+    g.mesa(33, 34, 10);
+    /* 中段实体岛:检查点落点+喘息区 */
+    g.ground(37, 41);
+    g.coinRow(37, 11, 5);
+    g.mesa(44, 45, 11);
+    g.mesa(49, 50, 10);
+    g.mesa(53, 54, 11);
+    g.mesa(57, 58, 10);
+    g.coin(20, 10);
+    g.coin(29, 10);
+    g.coin(38, 8);
+    g.coin(47, 9);
+    g.raven(23, 6);
+    g.raven(35, 5);
+    g.raven(45, 6);
+    g.wolf(66);
+    g.leopard(70);
+    g.spring(70);
+    g.coinArc(71, 6);
+    g.spike(82, 3);
+    g.pit(88, 92);
+    g.plat(89, 9, 3);
+    g.q(96, 8, 6);
+    g.wolf(101);
+    g.pit(105, 108);
+    g.coinArc(106, 9);
+    g.flag(114);
+  });
+
+  defLevel(126, "3-2 克老得冰谷", 2, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 3);
+    g.brick(18, 5, 30); /* 冰洞顶棚:压迫感但地面安全 */
+    g.spike(29, 2);
+    g.plat(29, 9, 2);
+    g.wolf(33);
+    g.spike(40, 3);
+    g.plat(40, 9, 3);
+    g.wolf(44);
+    g.pit(53, 57);
+    g.brick(60, 5, 8);
+    g.spring(66);
+    g.coinRow(65, 4, 5); /* 冲出洞口的大弹跳 */
+    g.mesa(74, 76, 11); /* 雪脊 */
+    g.pit(78, 81);
+    g.mesa(82, 84, 10);
+    g.pit(86, 89);
+    g.raven(93, 6);
+    g.raven(97, 7);
+    g.cannon(103);
+    g.pit(108, 111);
+    g.plat(109, 9, 2);
+    g.leopard(116);
+    g.flag(119);
+  });
+
+  defLevel(128, "3-3 羊驼雪峰", 2, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 4);
+    g.wolf(13);
+    /* 之字攀登:翻不过右侧高墙,必须上台地 */
+    g.plat(18, 10, 2);
+    g.plat(22, 8, 2);
+    g.plat(26, 6, 2);
+    g.coinRow(18, 9, 2);
+    g.coinRow(22, 7, 2);
+    g.raven(24, 4);
+    g.spring(29); /* 墙前弹簧:满速踩上去直接飞上峰顶 */
+    g.mesa(31, 34, 6); /* 峰顶台地 */
+    g.q(32, 5, 3);
+    g.bigc(33, 4);
+    g.pit(35, 39); /* 从峰顶跃下 */
+    g.plat(36, 8, 2);
+    g.mesa(44, 46, 9); /* 第二阶 */
+    g.spike(50, 3);
+    g.plat(50, 9, 3);
+    g.raven(56, 6);
+    g.spring(61);
+    g.plat(60, 5, 3);
+    g.coinRow(60, 4, 3);
+    g.pit(67, 73);
+    g.cr(68, 5);
+    g.leopard(79);
+    g.wolf(82);
+    g.wolf(85);
+    g.mesa(90, 92, 11);
+    g.mesa(95, 97, 10);
+    g.pit(100, 104);
+    g.mplat(100, 10, 104, 8);
+    g.coinRow(101, 7, 3);
+    g.raven(109, 6);
+    g.flag(120);
+  });
+
+  defLevel(132, "3-4 格罗可雪原", 2, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 3);
+    /* 暴风雪大桥:三段碎板+安全岛,渡鸦全程骚扰 */
+    g.pit(14, 46);
+    g.cr(15, 5);
+    g.mesa(21, 22, 11);
+    g.cr(24, 5);
+    g.mesa(30, 31, 11);
+    /* 中段实体岛:检查点落点 */
+    g.ground(34, 36);
+    g.mesa(39, 40, 11);
+    g.cr(42, 4);
+    g.raven(19, 7);
+    g.raven(28, 6);
+    g.raven(37, 7);
+    g.coinRow(15, 9, 4);
+    g.coinRow(33, 9, 4);
+    g.q(45, 8, 5);
+    g.spike(52, 4);
+    g.plat(52, 9, 4);
+    g.wolf(60);
+    g.leopard(63);
+    g.pit(68, 79);
+    g.mplat(69, 10, 74, 10);
+    g.mplat(74, 10, 78, 8);
+    g.coinRow(71, 7, 4);
+    g.spring(85);
+    g.coinRow(84, 4, 5);
+    g.bigc(87, 3);
+    g.wolf(94);
+    g.wolf(97);
+    g.leopard(100);
+    g.pit(105, 111);
+    g.plat(106, 10, 1);
+    g.plat(109, 9, 1);
+    g.coin(106, 9);
+    g.coin(109, 8);
+    g.raven(115, 6);
+    g.flag(124);
+  });
+
+  /* ================= 世界4 · 火山:岩浆之上无退路 ================= */
+
+  defLevel(124, "4-1 柴特鸡屁踢", 3, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 3);
+    g.lava(13, 3);
+    g.coinArc(13, 9);
+    g.lava(19, 3);
+    g.lava(25, 4);
+    g.coinRow(25, 9, 4);
+    g.spring(33);
+    g.lava(34, 5); /* 弹簧射过熔岩 */
+    g.coinArc(35, 6);
+    /* 跳岛链:熔岩中的高低立柱 */
+    /* 岩浆海:中段安全岛让检查点能落地 */
+    g.lava(42, 5);
+    g.mesa(44, 45, 11);
+    g.ground(47, 50);
+    g.mesa(48, 49, 10);
+    g.lava(51, 3);
+    g.mesa(52, 53, 11);
+    g.coin(48, 9);
+    g.cannon(60);
+    g.leopard(64);
+    g.cannon(69);
+    g.pit(74, 77);
+    g.q(79, 8, 1);
+    g.lava(82, 8);
+    g.cr(83, 6); /* 碎板冲刺越过岩浆 */
+    g.coinRow(83, 9, 6);
+    g.wolf(95);
+    g.q(99, 8, 5);
+    g.pit(103, 106);
+    g.coinArc(104, 9);
+    g.leopard(110);
+    g.flag(117);
+  });
+
+  defLevel(128, "4-2 索拉裂谷", 3, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 3);
+    g.lava(13, 5); /* 五格岩浆:满速按住跳 */
+    g.coinArc(15, 8);
+    g.wolf(23);
+    g.lava(27, 5);
+    g.mesa(34, 35, 11); /* 岩中孤岛 */
+    g.lava(36, 5);
+    g.cannon(45);
+    g.lava(50, 6);
+    g.plat(51, 9, 4); /* 高台过裂谷 */
+    g.coinRow(51, 8, 4);
+    g.raven(60, 6);
+    g.raven(64, 7);
+    g.spring(69);
+    g.lava(70, 6); /* 又是弹簧渡岩浆 */
+    g.coinArc(71, 5);
+    g.leopard(80);
+    g.wolf(83);
+    g.lava(88, 5);
+    g.mplat(88, 10, 92, 8);
+    g.coinRow(89, 7, 3);
+    g.cannon(97);
+    g.pit(102, 105);
+    g.cr(102, 4, 11);
+    g.q(107, 8, 2);
+    g.spike(112, 3);
+    g.plat(112, 9, 3);
+    g.leopard(117); /* 旗门外巡逻,不嵌门柱 */
+    g.flag(121);
+  });
+
+  defLevel(130, "4-3 曼巴火焰之路", 3, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 9, 4);
+    g.spike(13, 3);
+    g.lava(19, 4);
+    g.spike(26, 3); /* 刺-浆-刺三连 */
+    g.plat(13, 9, 3);
+    g.plat(26, 9, 3);
+    g.brick(32, 8, 8); /* 火焰走廊顶 */
+    g.q(35, 8, 4);
+    g.q(38, 8, 6);
+    g.wolf(36);
+    g.leopard(43);
+    g.leopard(46);
+    g.cannon(52);
+    g.lava(56, 5);
+    g.cannon(64); /* 隔岸对轰 */
+    g.spring(70);
+    g.lava(71, 5); /* 最长一跳交给弹簧 */
+    g.coinArc(72, 5);
+    g.bigc(75, 4);
+    g.pit(82, 85);
+    g.plat(83, 9, 2);
+    g.raven(89, 6);
+    g.raven(93, 7);
+    g.lava(98, 9);
+    g.cr(99, 7); /* 终局碎板冲刺 */
+    g.coinRow(99, 9, 7);
+    g.wolf(112);
+    g.q(116, 8, 1);
+    g.flag(123);
+  });
+
+  defLevel(112, "4-4 GPT 老板朝圣", 3, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(9, 10, 5);
+    g.q(15, 8, 1);
+    g.pit(20, 23);
+    g.coinArc(21, 9);
+    g.wolf(28);
+    g.spring(34);
+    g.coinRow(33, 5, 5);
+    g.bigc(36, 4);
+    g.pit(40, 43);
+    g.plat(41, 9, 2);
+    g.q(47, 8, 6);
+    g.brick(49, 8, 3);
+    g.leopard(55);
+    g.pit(60, 63);
+    g.coinRow(60, 9, 4);
+    g.cannon(68);
+    g.wolf(74);
+    g.q(78, 8, 3);
+    g.pit(82, 85);
+    g.cr(82, 4, 11);
+    g.coinRow(88, 11, 5);
+    g.raven(92, 7);
+    g.flag(104);
+  });
+
+  /* ================= 世界5 · 月面攻势:终局试炼场 ================= */
+
+  defLevel(122, "5-1 问芯月面基地", 4, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 4);
+    g.pipe(13, 2);
+    g.cannon(18);
+    g.pit(23, 27);
+    g.raven(25, 7);
+    g.spring(32);
+    g.plat(31, 6, 4); /* 基地高架栈道 */
+    g.coinRow(31, 5, 4);
+    g.q(34, 4, 6);
+    g.wolf(40);
+    g.leopard(44);
+    g.pit(48, 52);
+    g.plat(49, 9, 3);
+    g.pipe(57, 4);
+    g.cannon(57, 7.25); /* 坐在管顶,不嵌墙 */
+    g.wolf(62);
+    g.pit(66, 70);
+    g.cr(67, 3);
+    g.raven(74, 6);
+    g.raven(78, 8);
+    g.spring(83);
+    g.coinRow(82, 5, 4);
+    g.leopard(89);
+    g.cannon(94);
+    g.pit(99, 103);
+    g.coinArc(100, 9);
+    g.wolf(108);
+    g.flag(115);
+  });
+
+  defLevel(128, "5-2 万嗒环形山", 4, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 3);
+    g.pit(13, 18);
+    g.mesa(15, 16, 10); /* 山心的柱子 */
+    g.coin(15, 9);
+    g.pit(22, 27);
+    g.plat(23, 9, 2);
+    g.plat(26, 9, 2);
+    g.wolf(32);
+    g.pit(36, 44); /* 大环山:碎板双桥 */
+    g.cr(37, 4);
+    g.mesa(42, 43, 11);
+    g.raven(40, 7);
+    g.cannon(49);
+    g.leopard(54);
+    g.spring(59);
+    g.coinRow(58, 5, 5);
+    g.bigc(61, 4);
+    g.pit(65, 70);
+    g.mplat(66, 10, 69, 8);
+    g.cannon(75);
+    g.spike(80, 3);
+    g.plat(80, 9, 3);
+    g.wolf(87);
+    g.wolf(90);
+    g.pit(94, 100);
+    g.cr(95, 5);
+    g.raven(98, 6);
+    g.leopard(106);
+    g.q(110, 8, 2);
+    g.pit(114, 117);
+    g.coinArc(115, 9);
+    g.flag(121);
+  });
+
+  defLevel(126, "5-3 质朴矩阵", 4, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 9, 4);
+    /* 砖矩阵A:核心藏在正中 */
+    g.brick(14, 8, 3);
+    g.q(15, 8, 4);
+    g.brick(19, 8, 3);
+    g.brick(14, 5, 3);
+    g.q(15, 5, 2);
+    g.brick(19, 5, 3);
+    g.wolf(25);
+    g.spike(30, 2);
+    g.plat(30, 9, 2);
+    g.spike(34, 2);
+    g.plat(34, 9, 2);
+    g.raven(40, 6);
+    g.raven(44, 8);
+    /* 砖矩阵B:双层 */
+    g.brick(50, 8, 2);
+    g.q(52, 8, 1);
+    g.brick(54, 8, 2);
+    g.brick(50, 5, 6);
+    g.q(53, 5, 7);
+    g.leopard(60);
+    g.pit(64, 69);
+    g.plat(65, 9, 2);
+    g.plat(68, 9, 1);
+    g.cannon(74);
+    g.cannon(80); /* 双炮守门 */
+    g.wolf(77);
+    g.pit(85, 90);
+    g.cr(86, 4);
+    g.spring(95);
+    g.plat(94, 5, 4);
+    g.coinRow(94, 4, 4);
+    g.bigc(97, 3);
+    g.spike(102, 3);
+    g.plat(102, 9, 3);
+    g.raven(108, 6);
+    g.flag(118);
+  });
+
+  defLevel(104, "5-4 Anthropic 机房", 4, function (g) {
+    g.ground(0, 103);
+    g.startX = 6;
+    g.solid(4, 0, 14);
+    g.solid(99, 0, 14); /* 机房竞技场:两侧服务器墙 */
+    g.coinRow(10, 9, 4);
+    g.q(16, 8, 5); /* 决战前的奶 */
+    g.plat(30, 9, 3); /* 左服务机架:躲冲击波 */
+    g.plat(46, 7, 3);
+    g.plat(70, 9, 3);
+    g.plat(84, 7, 3);
+    g.coinRow(46, 6, 3);
+    g.coinRow(84, 6, 3);
+    g.q(60, 8, 2);
+    g.flagX = -1; /* 不设旗:打倒 Anthropic Dario 即通关 */
+  });
+
   return LEVELS;
 };

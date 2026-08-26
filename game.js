@@ -3,7 +3,7 @@
    引擎:Three.js(内嵌，无需安装，GitHub Pages 直接运行)
    主角:牛来 —— 按 1.png 建模(芥末黄杂毛/蓝弯角/灰紫厚唇/倦眼)
    Boss:GPT 老板逐关守关 + 5-4 Anthropic Dario 最终决战
-   玩法:马里奥式物理 · 空中COMBO · 冲刺撞飞 · 选关 · AI自动闯关
+   玩法:马里奥式物理 · 空中COMBO · 冲刺撞飞 · 选关
 ====================================================== */
 var W = 960,
   H = 600,
@@ -496,18 +496,12 @@ window.addEventListener("keydown", function (e) {
     sClick();
     return;
   }
-  if (e.code === "KeyO" && (GS.state === "play" || GS.state === "bossintro")) {
-    setAutoMode(!GS.auto);
-    sClick();
-    return;
-  }
   if (e.code === "KeyP" || e.code === "Escape") {
     if (GS.state === "play") {
       GS.state = "pause";
       sClick();
     } else if (GS.state === "pause") {
       if (e.code === "Escape") {
-        setAutoMode(false);
         GS.state = "select";
         makeSky();
         musicStop();
@@ -532,23 +526,23 @@ window.addEventListener("keydown", function (e) {
       return;
     }
     if (GS.state === "select") {
-      startLevel(GS.selIdx);
+      if (isUnlocked(GS.selIdx)) {
+        startLevel(GS.selIdx);
+      } else {
+        sWarn();
+        addShake(3);
+        popText(W / 2, H / 2, "先通过上一关解锁!", "#ff8a8a");
+      }
       e.preventDefault();
       return;
     }
     if (GS.state === "gameover" || GS.state === "win") {
-      setAutoMode(false);
       GS.state = "title";
       makeSky();
       buildTitle3D();
       sClick();
       return;
     }
-  }
-  if (GS.state === "title" && e.code === "KeyA") {
-    setAutoMode(true);
-    startGame();
-    return;
   }
   if (GS.state === "select") {
     var mv = 0;
@@ -612,18 +606,6 @@ if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
   bindTouch("btnR", "right");
   bindTouch("btnJ", "jump", true);
   bindTouch("btnB", "run");
-  var bai = document.getElementById("btnAI");
-  if (bai) {
-    var aiToggle = function (e) {
-      e.preventDefault();
-      if (GS.state === "play" || GS.state === "bossintro") {
-        setAutoMode(!GS.auto);
-        sClick();
-      }
-    };
-    bai.addEventListener("touchstart", aiToggle, { passive: false });
-    bai.addEventListener("mousedown", aiToggle);
-  }
 }
 
 /* ---------------- 特效 ---------------- */
@@ -698,20 +680,43 @@ var GS = {
   combo: 0,
   bestCombo: 0,
   perfect: false,
-  auto: false,
-  livesBeforeAuto: null,
   selIdx: 0,
   springSq: 0,
   sCoin: 0,
   sKill: 0,
   sBonus: 0,
-  holler: null,
-  hollerT: 0,
-  hollerLen: 0,
   checkpointX: 0,
   checkpointLevel: -1,
 };
 var GT = 0;
+/* v1.8 解锁体系:通关 G 解锁 G+1;迁移时清除老版本分数存档 */
+function isCleared(i) {
+  try {
+    var s = localStorage.getItem("niu_clear") || "";
+    return s.length > i && s.charCodeAt(i) === 49;
+  } catch (e) {
+    return false;
+  }
+}
+function isUnlocked(i) {
+  return i === 0 || isCleared(i - 1);
+}
+function markCleared(i) {
+  try {
+    var s = (localStorage.getItem("niu_clear") || "").padEnd(20, "0");
+    if (s.charCodeAt(i) === 49) return;
+    s = s.slice(0, i) + "1" + s.slice(i + 1);
+    localStorage.setItem("niu_clear", s);
+  } catch (e) {}
+}
+try {
+  if (localStorage.getItem("niu_ver") !== "2") {
+    for (var _mi = 0; _mi < 32; _mi++) localStorage.removeItem("niu_best_lv" + _mi);
+    localStorage.removeItem("niu_best");
+    localStorage.removeItem("niu_clear");
+    localStorage.setItem("niu_ver", "2");
+  }
+} catch (e) {}
 try {
   GS.hs = parseInt(localStorage.getItem("niu_best") || "0", 10) || 0;
 } catch (e) {}
@@ -744,11 +749,21 @@ var PL = {
   prevY: 0,
   squash: 0,
   springK: 0,
-  safeX: 0,
-  safeY: 0,
 };
 function solid(c) {
-  return c === 1 || c === 2 || c === 3 || c === 4 || c === 5 || c === 6 || c === 7 || c === 8 || c === 13 || c === 14;
+  return (
+    c === 1 ||
+    c === 2 ||
+    c === 3 ||
+    c === 4 ||
+    c === 5 ||
+    c === 6 ||
+    c === 7 ||
+    c === 8 ||
+    c === 13 ||
+    c === 14 ||
+    c === 17
+  );
 }
 function tileAt(tx, ty) {
   if (tx < 0 || tx >= curLV.w || ty < 0 || ty >= curLV.h) return 0;
@@ -758,9 +773,59 @@ function setTile(tx, ty, c) {
   if (tx >= 0 && tx < curLV.w && ty >= 0 && ty < curLV.h) tiles[ty * curLV.w + tx] = c;
 }
 
+function spawnMiniBoss(tx) {
+  var world = Math.floor(GS.li / 4) + 1;
+  var hp = world >= 5 ? 4 : world >= 3 ? 3 : 2;
+  var style = ["chase", "hopper", "charger", "lobber", "berserk"][Math.min(world, 5) - 1];
+  /* 安全落点扫描:在目标列附近找"脚下实心+头顶三格净空"的柱位,绝不悬空生成坠坑消失 */
+  var sx = tx,
+    sy = 9;
+  outer: for (var off = 0; off <= 6; off++) {
+    for (var dir = 0; dir < 2; dir++) {
+      var cx = tx + (dir === 0 ? off : -off);
+      if (cx < 8 || cx > curLV.w - 8) continue;
+      for (var gy = 12; gy >= 5; gy--) {
+        var g1 = curLV.get(cx, gy);
+        if (g1 !== 1 && g1 !== 2) continue;
+        if (curLV.get(cx, gy - 1) === 0 && curLV.get(cx, gy - 2) === 0 && curLV.get(cx, gy - 3) === 0) {
+          sx = cx;
+          sy = gy;
+          break outer;
+        }
+      }
+    }
+  }
+  ents.push({
+    k: "miniboss",
+    w: 66,
+    h: 60,
+    x: sx * T,
+    y: sy * T - 60 - 0.01,
+    vy: 0,
+    vx: 0,
+    face: -1,
+    dead: false,
+    t: Math.random() * TAU,
+    hp: hp,
+    maxhp: hp,
+    hurtT: 0,
+    met: false,
+    world: world,
+    fast: world >= 3,
+    style: style,
+    tele: 0,
+    chargeT: 0,
+    chargeCd: rnd(2.6, 4.2),
+    lobCd: rnd(1.6, 2.6),
+    hopCd: rnd(0.6, 1.0),
+    raged: false,
+    stickT: 0,
+    lsx: sx * T,
+    lsy: sy * T - 60 - 0.01,
+  });
+}
 function loadLevel(i, fresh) {
   resetKeys();
-  resetAIControl();
   var respawnX = !fresh && GS.checkpointLevel === i ? GS.checkpointX : null;
   GS.li = i;
   curLV = LEVELS[i];
@@ -797,27 +862,13 @@ function loadLevel(i, fresh) {
         t: Math.random() * TAU,
       });
     } else if (e.k === "miniboss") {
-      ents.push({
-        k: "miniboss",
-        w: 66,
-        h: 60,
-        x: e.x * T,
-        y: 9 * T,
-        vy: 0,
-        vx: 0,
-        face: -1,
-        dead: false,
-        t: Math.random() * TAU,
-        hp: 2,
-        maxhp: 2,
-        hurtT: 0,
-        met: false,
-      });
+      spawnMiniBoss(e.x);
     } else
       ents.push({
         k: e.k,
-        w: e.k === "leopard" ? 30 : 26,
-        h: e.k === "leopard" ? 24 : 22,
+        flying: e.k === "raven" || e.k === "bird",
+        w: e.k === "leopard" ? 30 : e.k === "cannon" ? 36 : 26,
+        h: e.k === "leopard" ? 24 : e.k === "cannon" ? 30 : 22,
         x: e.x * T + T / 2 - 13,
         y: e.y * T,
         vy: 0,
@@ -828,24 +879,19 @@ function loadLevel(i, fresh) {
         baseY: e.y * T,
       });
   }
-  /* Every flag level has one GPT 老板 guarding the finish. */
+  /* Every flag level has one GPT 老板 guarding the finish behind a gate. */
+  GS.gateTiles = [];
+  GS.gateOpen = false;
   if (curLV.flagX > 0) {
-    ents.push({
-      k: "miniboss",
-      w: 66,
-      h: 60,
-      x: (curLV.flagX - 10) * T,
-      y: 9 * T,
-      vy: 0,
-      vx: 0,
-      face: -1,
-      dead: false,
-      t: Math.random() * TAU,
-      hp: 2,
-      maxhp: 2,
-      hurtT: 0,
-      met: false,
-    });
+    for (var gty = 5; gty <= 11; gty++) {
+      if (curLV.get(curLV.flagX - 2, gty) === 17) GS.gateTiles.push({ x: curLV.flagX - 2, y: gty });
+    }
+    /* 旗子先藏起来:击败守关老板才升起 */
+    GS.flagUp = false;
+    for (var fy2 = 8; fy2 <= 11; fy2++) {
+      if (tiles[fy2 * curLV.w + curLV.flagX] === 15) tiles[fy2 * curLV.w + curLV.flagX] = 0;
+    }
+    spawnMiniBoss(curLV.flagX - 10);
   }
   PL.big = fresh ? PL.big : false;
   PL.h = PL.big ? 50 : 36;
@@ -860,8 +906,6 @@ function loadLevel(i, fresh) {
   PL.dead = false;
   PL.anim = 0;
   PL.squash = 0;
-  PL.safeX = PL.x;
-  PL.safeY = PL.y;
   if (fresh || GS.checkpointLevel !== i) {
     GS.checkpointLevel = i;
     GS.checkpointX = PL.x;
@@ -885,8 +929,7 @@ function startGame() {
   GS.sCoin = 0;
   GS.sKill = 0;
   GS.sBonus = 0;
-  GS.livesBeforeAuto = GS.auto ? START_LIVES : null;
-  GS.lives = GS.auto ? 99 : START_LIVES;
+  GS.lives = START_LIVES;
   PL.big = false;
   PL.inv = 0;
   loadLevel(0, true);
@@ -900,8 +943,7 @@ function startLevel(i) {
   GS.sCoin = 0;
   GS.sKill = 0;
   GS.sBonus = 0;
-  GS.livesBeforeAuto = GS.auto ? START_LIVES : null;
-  GS.lives = GS.auto ? 99 : START_LIVES;
+  GS.lives = START_LIVES;
   PL.big = false;
   PL.inv = 0;
   loadLevel(i, true);
@@ -910,7 +952,6 @@ function startLevel(i) {
 
 /* ============ 玩家 ============ */
 function damagePlayer() {
-  if (GS.auto) return; /* 牛来模式:无敌 */
   if (PL.inv > 0 || PL.dead || GS.state !== "play") return;
   if (PL.star > 0) return;
   if (PL.big) {
@@ -927,19 +968,25 @@ function damagePlayer() {
 }
 function die() {
   if (PL.dead) return;
-  if (GS.auto && !GS.boss) {
-    /* Automatic mode recovers to its last verified floor instead of sinking into hazards. */
-    resetKeys();
-    resetAIControl();
-    if (GS.time <= 0) GS.time = 300;
-    PL.x = Number.isFinite(PL.safeX) ? PL.safeX : curLV.startX * T;
-    PL.y = Number.isFinite(PL.safeY) ? PL.safeY : 11 * T;
-    PL.vx = 0;
-    PL.vy = -280;
-    PL.inv = Math.max(PL.inv, 0.6);
-    popText(PL.x + 14, PL.y - 30, "牛来不灭!", "#5ad4ff");
-    return;
+  var _fx = Math.floor((PL.x + PL.w / 2) / T),
+    _fy = Math.floor((PL.y + PL.h - 1) / T);
+  var _cause = "enemy";
+  if (GS.time <= 0) _cause = "timeout";
+  else if (PL.y > H - 60) _cause = "fall";
+  else {
+    var _tc = tileAt(_fx, _fy);
+    if (_tc === 10) _cause = "spike";
+    else if (_tc === 11) _cause = "lava";
+    else if (GS.boss) _cause = "boss";
   }
+  window.__lastDie = {
+    x: Math.round(PL.x),
+    y: Math.round(PL.y),
+    tile: _tc,
+    cause: _cause,
+    li: GS.li,
+    t: Math.round(GS.time),
+  };
   PL.dead = true;
   PL.vy = -720;
   sDie();
@@ -973,7 +1020,7 @@ function stomp(e) {
   GS.combo = (GS.combo || 0) + 1;
   if (GS.combo > GS.bestCombo) GS.bestCombo = GS.combo;
   var cm = Math.min(GS.combo, 8);
-  var base = e.k === "leopard" ? 300 : e.k === "raven" ? 250 : 200;
+  var base = e.k === "leopard" ? 300 : e.k === "raven" ? 250 : e.k === "cannon" ? 300 : 200;
   var sc = base * cm;
   GS.score += sc;
   GS.sKill += sc;
@@ -1173,15 +1220,6 @@ function updatePlayer(dt) {
   collideX(p);
   p.y += p.vy * dt;
   collideY(p);
-  if (p.ground) {
-    var safeTx = Math.floor((p.x + p.w / 2) / T);
-    var safeTy = Math.floor((p.y + p.h + 2) / T);
-    var safeTile = tileAt(safeTx, safeTy);
-    if (solid(safeTile) || safeTile === 9 || safeTile === 12 || safeTile === 16) {
-      p.safeX = p.x;
-      p.safeY = p.y;
-    }
-  }
   if (!p._wasG && p.ground) {
     if (p._vyPrev > 420) {
       burst(p.x + 14, p.y + p.h, "dust", 7, 140);
@@ -1203,15 +1241,6 @@ function updatePlayer(dt) {
   }
   p._wasG = p.ground;
   p._vyPrev = p.vy;
-  /* Keep automatic-mode footstep effects in simulation, not rendering. */
-  if (GS.auto && Math.abs(p.vx) > 12 && p.ground) {
-    p._stompS = (p._stompS || 0) + dt;
-    if (p._stompS > 0.28) {
-      p._stompS = 0;
-      addShake(0.5);
-      burst(p.x + 14, p.y + p.h, "dust", 2, 110);
-    }
-  } else p._stompS = 0;
   if (p.y > H + 40) {
     if (!p.dead) {
       die();
@@ -1531,6 +1560,37 @@ function triggerCrumble(tx, ty) {
   var key = tx + "," + ty;
   if (!crumbles[key]) crumbles[key] = { x: tx, y: ty, t: 0.75, total: 0.75 };
 }
+function openGate() {
+  if (GS.gateOpen || !GS.gateTiles || !GS.gateTiles.length) return;
+  GS.gateOpen = true;
+  for (var i = 0; i < GS.gateTiles.length; i++) {
+    var gt = GS.gateTiles[i];
+    if (tileAt(gt.x, gt.y) === 17) {
+      setTile(gt.x, gt.y, 0);
+      refreshWorldBlock(gt.x, gt.y);
+      burst(gt.x * T + T / 2, gt.y * T + T / 2, "shard", 7, 230);
+    }
+  }
+  sBreak();
+  addShake(7);
+  if (curLV && curLV.flagX > 0) {
+    popText((curLV.flagX - 3) * T, 7 * T, "旗门开启!", "#ffd23f");
+    /* 守关老板已灭:升起旗子 */
+    if (!GS.flagUp) {
+      GS.flagUp = true;
+      var fx2 = curLV.flagX;
+      for (var fy3 = 8; fy3 <= 11; fy3++) {
+        if (tileAt(fx2, fy3) === 0) setTile(fx2, fy3, 15);
+      }
+      if (GS.__flagRoot) {
+        GS.__flagRoot.visible = true;
+        burst(fx2 * T + T / 2, 9 * T, "spark", 18, 300);
+      }
+      sPerfect();
+      popText((fx2 + 1) * T, 6 * T, "旗子升起!", "#ffd23f");
+    }
+  }
+}
 function updateCrumbles(dt) {
   for (var key in crumbles) {
     var cr = crumbles[key];
@@ -1572,15 +1632,28 @@ function updateServerSmoke(dt) {
   }
 }
 function updateCheckpoint() {
-  if (GS.auto || GS.state !== "play" || !PL.ground || GS.checkpointLevel !== GS.li) return;
+  if (GS.state !== "play" || !PL.ground || GS.checkpointLevel !== GS.li) return;
   if (PL.x < GS.checkpointX + 24 * T) return;
   var tx = Math.floor((PL.x + PL.w / 2) / T);
   var floor = tileAt(tx, 12),
     head = tileAt(tx, 11);
   if ((floor === 1 || floor === 2) && head === 0) {
-    GS.checkpointX = tx * T + 4;
-    popText(PL.x + PL.w / 2, PL.y - 34, "检查点!", "#8affc1");
-    sClick();
+    /* 检查点必须安全:附近没有尖刺/岩浆,也没有活着的敌人 */
+    var safe = true;
+    for (var dx2 = -2; dx2 <= 3 && safe; dx2++) {
+      var hc = tileAt(tx + dx2, 12);
+      if (hc === 10 || hc === 11) safe = false;
+    }
+    for (var ei = 0; ei < ents.length && safe; ei++) {
+      var en = ents[ei];
+      if (en.k === "move" || en.dead || en.gone || en.k === "bird" || en.k === "raven") continue;
+      if (Math.abs(en.x - tx * T) < 12 * T) safe = false;
+    }
+    if (safe) {
+      GS.checkpointX = tx * T + 4;
+      popText(PL.x + PL.w / 2, PL.y - 34, "检查点!", "#8affc1");
+      sClick();
+    }
   }
 }
 function hazardCheck() {
@@ -1589,10 +1662,8 @@ function hazardCheck() {
   var footTy = Math.floor((PL.y + PL.h + 2) / T);
   for (var footTx = tx0; footTx <= tx1; footTx++) {
     if (tileAt(footTx, footTy) === 10) {
-      if (!GS.auto) {
-        damagePlayer();
-        addShake(2);
-      }
+      damagePlayer();
+      addShake(2);
       return;
     }
   }
@@ -1602,10 +1673,8 @@ function hazardCheck() {
     for (var ty = ty0; ty <= ty1; ty++) {
       var c = tileAt(tx, ty);
       if (c === 10) {
-        if (!GS.auto) {
-          damagePlayer();
-          addShake(2);
-        }
+        damagePlayer();
+        addShake(2);
         return;
       }
       if (c === 11) {
@@ -1634,6 +1703,17 @@ function eWallAhead(e) {
   var ty2 = Math.floor((e.y + e.h / 2) / T);
   return eSolid(tileAt(tx, ty2));
 }
+/* 实体包围盒与"硬墙"相交检测(仅不可穿越方块;刺/弹簧/碎板是可站立地形不算墙) */
+var HARD_WALLS = [1, 2, 5, 7, 13, 14, 17];
+function entWallHit(e, nx, ny) {
+  var x0 = Math.floor((nx + 2) / T),
+    x1 = Math.floor((nx + e.w - 2) / T);
+  var y0 = Math.floor((ny + 2) / T),
+    y1 = Math.floor((ny + e.h - 2) / T);
+  for (var tx = x0; tx <= x1; tx++)
+    for (var ty = y0; ty <= y1; ty++) if (HARD_WALLS.indexOf(tileAt(tx, ty)) >= 0) return true;
+  return false;
+}
 function updateEnemies(dt) {
   var p = PL;
   for (var i = 0; i < ents.length; i++) {
@@ -1643,8 +1723,8 @@ function updateEnemies(dt) {
       var tt = (Math.sin(e.t * 1.4) + 1) / 2;
       var nx = lerp(e.x1, e.x2, tt),
         ny = lerp(e.y1, e.y2, tt);
-      var dx = clamp(nx - e.x, -220 * dt, 220 * dt),
-        dy = clamp(ny - e.y, -160 * dt, 160 * dt);
+      var dx = clamp(nx - e.x, -140 * dt, 140 * dt),
+        dy = clamp(ny - e.y, -100 * dt, 100 * dt);
       if (p.ground && Math.abs(p.y + p.h - e.y) < 8 && p.x + p.w > e.x + 2 && p.x < e.x + e.w - 2 && !p.dead) {
         var carriedVx = p.vx;
         p.x += dx;
@@ -1662,30 +1742,145 @@ function updateEnemies(dt) {
     if (e.dead) {
       e.squash -= dt;
       if (e.fly) e.x += e.fly * 430 * dt;
+      /* 飞行单位死亡后受重力坠落,出屏即清除;地面单位原地压扁消失 */
+      if (e.flying) {
+        e.vy = (e.vy || 0) + 2400 * dt;
+        e.y += e.vy * dt;
+        if (e.y > H + 60) e.gone = true;
+      }
       if (e.squash < 0) e.gone = true;
       continue;
     }
     if (e.k === "raven") {
-      e.x += e.face * 40 * dt;
-      e.y = e.baseY - 18 + Math.sin(e.t * 2.2) * 34;
+      /* 渡鸦:遇墙折返、俯冲不扎进地形,永不卡墙 */
+      var rvx = e.x + e.face * 40 * dt;
+      if (entWallHit(e, rvx, e.y)) e.face *= -1;
+      else e.x = rvx;
+      var rvy = e.baseY - 18 + Math.sin(e.t * 2.2) * 34;
+      if (!entWallHit(e, e.x, rvy)) e.y = rvy;
+      if (entWallHit(e, e.x, e.y)) e.y -= 120 * dt; /* 出生嵌入自救:升起脱困 */
       if (Math.random() < 0.01) e.face *= -1;
+    } else if (e.k === "cannon") {
+      /* 火球炮台:固定不动,锁定射程内的牛来周期开火 */
+      if (e.cd === undefined) e.cd = rnd(0.7, 1.5);
+      e.face = p.x + p.w / 2 > e.x + e.w / 2 ? 1 : -1;
+      var canFire = GS.state === "play" && !p.dead && Math.abs(p.x - e.x) < 620 && Math.abs(p.y - e.y) < 300;
+      e.cd -= dt;
+      if (canFire && e.cd <= 0) {
+        e.cd = 2.4;
+        var cx2 = e.x + e.w / 2 + e.face * (e.w / 2 + 8),
+          cy2 = e.y + 12; /* 炮管中段出膛 */
+        fires.push({ x: cx2, y: cy2, vx: e.face * 255, vy: -170, t: 0 });
+        burst(cx2, cy2, "fir", 6, 130);
+        sFire();
+        addShake(1);
+      }
     } else if (e.k === "miniboss") {
-      /* GPT 老板:追着牛来跑,撞墙小跳,踩头2次干掉 */
+      /* GPT 老板:追击 + 预警冲锋;踩头/冲撞/无敌可伤;死亡轰开旗门 */
       if (e.hurtT > 0) {
         e.hurtT -= dt;
       } else {
+        /* 卡墙自救:持续嵌入超时回安全点 */
+        if (entWallHit(e, e.x, e.y)) {
+          e.stickT += dt;
+          if (e.stickT > 0.75) {
+            e.stickT = 0;
+            e.x = e.lsx;
+            e.y = e.lsy;
+            e.vx = 0;
+            e.vy = 0;
+          }
+        } else {
+          e.stickT = 0;
+          if (e.vy === 0 && !entWallHit(e, e.x - 1, e.y) && !entWallHit(e, e.x + 1, e.y)) {
+            e.lsx = e.x;
+            e.lsy = e.y;
+          }
+        }
         if (!e.met && Math.abs(p.x - e.x) < 430) {
           e.met = true;
           sNiuLai();
           addShake(8);
           flash = 0.4;
           popText(e.x + e.w / 2, e.y - 30, "算力归我——!!", "#ff5adf");
-          popText(PL.x + 14, PL.y - 52, "GPT 老板拦路!", "#c05aff");
+          var miniName =
+            { chase: "GPT 老板", hopper: "弹跳老板", charger: "冲锋老板", lobber: "轰炸老板", berserk: "狂暴老板" }[
+              e.style
+            ] || "GPT 老板";
+          popText(PL.x + 14, PL.y - 52, miniName + "拦路!", "#c05aff");
         }
-        e.face = p.x > e.x ? 1 : -1;
-        var ms = Math.abs(p.x - e.x) < 300 ? 128 : 66;
-        e.vx = e.face * ms;
+        if (e.tele > 0) {
+          /* 冲锋预警:原地蓄力发抖 */
+          e.tele -= dt;
+          e.vx = 0;
+          if (Math.random() < 0.3)
+            part({
+              x: e.x + e.w / 2 + rnd(-26, 26),
+              y: e.y + rnd(4, e.h),
+              vx: rnd(-40, 40),
+              vy: rnd(-90, -20),
+              g: 0,
+              life: 0.25,
+              t: 0,
+              type: "spark",
+              size: 3,
+              col: "#ff5a5a",
+            });
+          if (e.tele <= 0) {
+            /* 崖边放弃冲锋,绝不自杀 */
+            if (!eSolidAhead(e)) {
+              e.chargeCd = Math.min(e.chargeCd, 1.2);
+            } else {
+              e.chargeT = e.style === "berserk" ? 1.05 : 0.85;
+              sHowl();
+              addShake(4);
+            }
+          }
+        } else if (e.chargeT > 0) {
+          e.chargeT -= dt;
+          e.vx = e.face * (e.style === "berserk" ? 380 : e.fast ? 345 : 295);
+          if (!eSolidAhead(e)) e.chargeT = 0; /* 冲锋中前方悬空立即收势 */
+        } else {
+          e.face = p.x > e.x ? 1 : -1;
+          e.chargeCd -= dt;
+          if (e.chargeCd <= 0 && Math.abs(p.x - e.x) < 430) {
+            e.tele = 0.55;
+            sWarn();
+            e.chargeCd = rnd(3.8, 5.4);
+            e.vx = 0;
+          } else e.vx = e.face * (Math.abs(p.x - e.x) < 320 ? (e.fast ? 140 : 118) : 70);
+          if (e.style === "lobber" && GS.state === "play" && !p.dead) {
+            /* 轰炸型:周期抛射火球封锁走位 */
+            e.lobCd -= dt;
+            if (e.lobCd <= 0 && Math.abs(p.x - e.x) < 520 && fires.length < 8) {
+              e.lobCd = rnd(2.2, 3.2);
+              var dxL = p.x + p.w / 2 - (e.x + e.w / 2),
+                ttL = 0.75,
+                vxL = clamp(dxL / ttL, -260, 260),
+                vyL = (p.y + p.h / 2 - e.y - 10) / ttL - 0.5 * 980 * ttL;
+              fires.push({ x: e.x + e.w / 2, y: e.y + 10, vx: vxL, vy: vyL, t: 0 });
+              popText(e.x + e.w / 2, e.y - 26, "轰炸!", "#ff8a3f");
+              sFire();
+            }
+          }
+        }
+        var pbx = e.x;
         e.x += e.vx * dt;
+        if (entWallHit(e, e.x, e.y)) {
+          /* 撞墙:推出+反馈;狂暴型被撞会瞬间二段冲锋 */
+          e.x = pbx;
+          if (e.chargeT > 0) {
+            e.chargeT = 0;
+            addShake(5);
+            burst(e.x + e.w / 2 + (e.face * e.w) / 2, e.y + e.h / 2, "spark", 8, 200);
+            if (e.style === "berserk" && !e.raged) {
+              e.raged = true;
+              e.tele = 0.35;
+              sWarn();
+            }
+          } else e.face *= -1;
+        } else if (e.chargeT > 0 && !e.raged) e.raged = false;
+        var pby0 = e.y;
         e.vy += 1400 * dt;
         e.y += e.vy * dt;
         var b0 = Math.floor((e.x + 4) / T),
@@ -1700,23 +1895,58 @@ function updateEnemies(dt) {
             break;
           }
         }
-        if (lb && eWallAhead(e)) {
-          e.vy = -620;
-        } else if (lb && !eSolidAhead(e)) {
+        if (!lb && entWallHit(e, e.x, e.y)) {
+          /* 顶头/斜落卡半空:回退本帧竖直位移 */
+          e.y = pby0;
+          if (e.vy < 0) e.vy = 40;
+        }
+        if (lb && e.style === "hopper" && eSolidAhead(e)) {
+          /* 弹跳型:落地即再起跳(前方必须有地),压制站桩输出 */
+          e.hopCd -= dt;
+          if (e.hopCd <= 0 && GS.state === "play") {
+            e.vy = -700;
+            e.hopCd = rnd(0.85, 1.3);
+          }
+        } else if (
+          lb &&
+          (!eSolidAhead(e) ||
+            tileAt(Math.floor((e.x + e.w / 2 + e.face * (e.w / 2 + 6)) / T), Math.floor((e.y + e.h + 6) / T)) === 16)
+        ) {
           e.face *= -1;
-        } /* 崖边掉头,绝不跳坑 */
+        } /* 崖边/碎板前掉头:绝不跳坑,不踩会塌的桥 */
+        if (!lb && !eSolidAhead(e) && e.chargeT <= 0) {
+          /* 空中且前方悬空:切断前向漂移,不许飘进坑 */
+          e.vx *= 0.12;
+        }
         if (!lb && e.y > H + 40) {
-          e.gone = true;
-        } /* 掉坑=阵亡,禁止复活刷新 */
+          /* 坠坑不消失:回安全点再战(杜绝坠坑白嫖旗门) */
+          e.x = e.lsx;
+          e.y = e.lsy - T * 2;
+          e.vx = 0;
+          e.vy = 0;
+          e.tele = 0.4;
+          e.chargeT = 0;
+          popText(e.x + e.w / 2, e.y - 24, "老板爬回来了!", "#ff5adf");
+        } /* 掉坑=短暂撤退,旗门必须正面打 */
       }
     } else {
       var spd = e.k === "leopard" ? 135 : 72;
+      if (entWallHit(e, e.x, e.y)) {
+        /* 出生嵌入自救:缓缓升起脱困 */
+        e.y -= 90 * dt;
+        continue;
+      }
       if (Math.abs(p.x - e.x) < 320 && GS.state === "play" && !p.dead) {
         e.face = p.x > e.x ? 1 : -1;
       }
       e.vx = e.face * spd;
+      var prevX2 = e.x;
       e.x += e.vx * dt;
-      if (eWallAhead(e)) e.face *= -1;
+      if (entWallHit(e, e.x, e.y)) {
+        /* 撞墙:退回并掉头,绝不穿进方块 */
+        e.x = prevX2;
+        e.face *= -1;
+      }
       if (!eSolidAhead(e) && e.vy === 0) {
         e.face *= -1;
       }
@@ -1744,182 +1974,170 @@ function updateEnemies(dt) {
       /* 云雀永远友好 */
       var ov = overlap(e.x + 3, e.y + 4, e.w - 6, e.h - 6, p.x + 3, p.y + 3, p.w - 6, p.h - 3);
       if (ov) {
-        if (GS.auto && !p.dead) {
-          /* 牛来模式:碰谁谁死 */
-          if (e.k === "miniboss") {
+        var stomping = p.vy > 0 && p.y + p.h - 6 < e.y + e.h * 0.5;
+        if (e.k === "miniboss") {
+          if (stomping) {
+            /* 踩头永远弹起;无敌帧内不重复计伤、绝不扣血 */
+            p.vy = keys.jump ? -820 : -540;
             if (e.hurtT <= 0) {
               e.hp--;
               e.hurtT = 1.0;
-              sBreak();
-              addShake(7);
-              burst(e.x + e.w / 2, e.y + e.h / 2, "spark", 16, 300);
-              if (e.hp <= 0) {
-                e.dead = true;
-                e.squash = 0.5;
-                e.fly = p.face;
-                GS.score += 2000;
-                GS.sKill += 2000;
-                popText(e.x + e.w / 2, e.y - 10, "GPT 老板被撞爆!+2000", "#c05aff");
-                for (var cd9 = 0; cd9 < 6; cd9++) spawnCoinDrop(e.x + e.w / 2 + rnd(-70, 70), e.y - 20 - cd9 * 14);
-                sPerfect();
-              } else popText(e.x + e.w / 2, e.y - 10, "GPT 老板 HP:" + e.hp, "#ff5a5a");
-            }
-            p.vy = -540;
-          } else {
-            e.dead = true;
-            e.squash = 0.35;
-            GS.score += 300;
-            GS.sKill += 300;
-            sBreak();
-            addShake(4);
-            popText(e.x + e.w / 2, e.y, "碰!+300", "#8aff5a");
-            p.vy = -260;
-          }
-        } else {
-          var stomping = p.vy > 0 && p.y + p.h - 6 < e.y + e.h * 0.5;
-          if (e.k === "miniboss") {
-            if (stomping) {
-              /* 踩头永远弹起;无敌帧内不重复计伤、绝不扣血 */
-              p.vy = keys.jump ? -820 : -540;
-              if (e.hurtT <= 0) {
-                e.hp--;
-                e.hurtT = 1.0;
-                GS.combo = (GS.combo || 0) + 1;
-                if (GS.combo > GS.bestCombo) GS.bestCombo = GS.combo;
-                rewardComboMilestone(p.x + p.w / 2, p.y - 30);
-                sBreak();
-                addShake(9);
-                freeze = 0.07;
-                burst(e.x + e.w / 2, e.y + e.h / 2, "spark", 16, 320);
-                if (e.hp <= 0) {
-                  e.dead = true;
-                  e.squash = 0.5;
-                  e.fly = p.face;
-                  GS.score += 2000;
-                  GS.sKill += 2000;
-                  popText(e.x + e.w / 2, e.y - 10, "GPT 老板被踩爆!+2000", "#c05aff");
-                  for (var cd = 0; cd < 6; cd++) spawnCoinDrop(e.x + e.w / 2 + rnd(-70, 70), e.y - 20 - cd * 14);
-                  sPerfect();
-                } else {
-                  popText(e.x + e.w / 2, e.y - 10, "GPT 老板 HP:" + e.hp, "#ff5a5a");
-                }
-              }
-            } else if (p.star > 0 && e.hurtT <= 0) {
-              e.hp--;
-              e.hurtT = 1.0;
+              GS.combo = (GS.combo || 0) + 1;
+              if (GS.combo > GS.bestCombo) GS.bestCombo = GS.combo;
+              rewardComboMilestone(p.x + p.w / 2, p.y - 30);
               sBreak();
               addShake(9);
-              burst(e.x + e.w / 2, e.y + e.h / 2, "spark", 12, 300);
-              if (e.hp <= 0) {
-                e.dead = true;
-                e.squash = 0.5;
-                e.fly = p.face;
-                GS.score += 2000;
-                popText(e.x + e.w / 2, e.y - 10, "GPT 老板被撞爆!+2000", "#c05aff");
-                for (var cd2 = 0; cd2 < 6; cd2++) spawnCoinDrop(e.x + e.w / 2 + rnd(-70, 70), e.y - 20 - cd2 * 14);
-                sPerfect();
-              } else popText(e.x + e.w / 2, e.y - 10, "GPT 老板 HP:" + e.hp, "#ff5a5a");
-            } else if (Math.abs(p.vx) > 285 && e.hurtT <= 0) {
-              /* 冲撞也能撞 GPT 老板 */
-              e.hp--;
-              e.hurtT = 1.0;
-              p.vx = -p.face * 260;
-              p.vy = -320;
-              sTackle();
-              addShake(8);
-              freeze = 0.05;
-              burst(e.x + e.w / 2, e.y + e.h / 2, "spark", 12, 300);
+              freeze = 0.07;
+              burst(e.x + e.w / 2, e.y + e.h / 2, "spark", 16, 320);
               if (e.hp <= 0) {
                 e.dead = true;
                 e.squash = 0.5;
                 e.fly = p.face;
                 GS.score += 2000;
                 GS.sKill += 2000;
-                popText(e.x + e.w / 2, e.y - 10, "GPT 老板被撞爆!+2000", "#c05aff");
-                for (var cd3 = 0; cd3 < 6; cd3++) spawnCoinDrop(e.x + e.w / 2 + rnd(-70, 70), e.y - 20 - cd3 * 14);
+                popText(e.x + e.w / 2, e.y - 10, "GPT 老板被踩爆!+2000", "#c05aff");
+                for (var cd = 0; cd < 6; cd++) spawnCoinDrop(e.x + e.w / 2 + rnd(-70, 70), e.y - 20 - cd * 14);
                 sPerfect();
-              } else popText(e.x + e.w / 2, e.y - 10, "GPT 老板 HP:" + e.hp, "#ff5a5a");
-            } else if (e.hurtT <= 0) {
-              damagePlayer();
+                openGate();
+              } else {
+                popText(e.x + e.w / 2, e.y - 10, "GPT 老板 HP:" + e.hp, "#ff5a5a");
+              }
             }
-          } else if (stomping) {
-            stomp(e);
-          } else if (p.star > 0) {
-            e.dead = true;
-            e.squash = 0.3;
-            GS.score += 200;
+          } else if (p.star > 0 && e.hurtT <= 0) {
+            e.hp--;
+            e.hurtT = 1.0;
             sBreak();
-            addShake(3);
-            burst(e.x + e.w / 2, e.y + e.h / 2, "spark", 10, 300);
-            popText(e.x + e.w / 2, e.y, "+200", "#5ad4ff");
-          } else if (Math.abs(p.vx) > 285) {
-            /* 全速冲刺=冲撞攻击(金色气流时生效) */
-            e.dead = true;
-            e.squash = 0.35;
-            e.fly = p.face;
-            GS.combo = (GS.combo || 0) + 1;
-            if (GS.combo > GS.bestCombo) GS.bestCombo = GS.combo;
-            rewardComboMilestone(p.x + p.w / 2, p.y - 30);
-            var tsc = e.k === "leopard" ? 250 : 180;
-            GS.score += tsc;
-            GS.sKill += tsc;
-            popText(e.x + e.w / 2, e.y, "冲撞!+" + tsc, "#8aff5a");
+            addShake(9);
+            burst(e.x + e.w / 2, e.y + e.h / 2, "spark", 12, 300);
+            if (e.hp <= 0) {
+              e.dead = true;
+              e.squash = 0.5;
+              e.fly = p.face;
+              GS.score += 2000;
+              popText(e.x + e.w / 2, e.y - 10, "GPT 老板被撞爆!+2000", "#c05aff");
+              for (var cd2 = 0; cd2 < 6; cd2++) spawnCoinDrop(e.x + e.w / 2 + rnd(-70, 70), e.y - 20 - cd2 * 14);
+              sPerfect();
+              openGate();
+            } else popText(e.x + e.w / 2, e.y - 10, "GPT 老板 HP:" + e.hp, "#ff5a5a");
+          } else if (Math.abs(p.vx) > 285 && e.hurtT <= 0) {
+            /* 冲撞也能撞 GPT 老板 */
+            e.hp--;
+            e.hurtT = 1.0;
+            p.vx = -p.face * 260;
+            p.vy = -320;
             sTackle();
-            addShake(5);
-            freeze = 0.04;
-            p.vx *= 0.74;
-            p.vy = Math.min(p.vy, -140);
-            burst(e.x + e.w / 2, e.y + e.h / 2, "spark", 10, 260);
-          } else damagePlayer();
-        }
+            addShake(8);
+            freeze = 0.05;
+            burst(e.x + e.w / 2, e.y + e.h / 2, "spark", 12, 300);
+            if (e.hp <= 0) {
+              e.dead = true;
+              e.squash = 0.5;
+              e.fly = p.face;
+              GS.score += 2000;
+              GS.sKill += 2000;
+              popText(e.x + e.w / 2, e.y - 10, "GPT 老板被撞爆!+2000", "#c05aff");
+              for (var cd3 = 0; cd3 < 6; cd3++) spawnCoinDrop(e.x + e.w / 2 + rnd(-70, 70), e.y - 20 - cd3 * 14);
+              sPerfect();
+              openGate();
+            } else popText(e.x + e.w / 2, e.y - 10, "GPT 老板 HP:" + e.hp, "#ff5a5a");
+          } else if (e.hurtT <= 0) {
+            damagePlayer();
+          }
+        } else if (stomping) {
+          stomp(e);
+        } else if (p.star > 0) {
+          e.dead = true;
+          e.squash = 0.3;
+          GS.score += 200;
+          sBreak();
+          addShake(3);
+          burst(e.x + e.w / 2, e.y + e.h / 2, "spark", 10, 300);
+          popText(e.x + e.w / 2, e.y, "+200", "#5ad4ff");
+        } else if (Math.abs(p.vx) > 285) {
+          /* 全速冲刺=冲撞攻击(金色气流时生效) */
+          e.dead = true;
+          e.squash = 0.35;
+          e.fly = p.face;
+          GS.combo = (GS.combo || 0) + 1;
+          if (GS.combo > GS.bestCombo) GS.bestCombo = GS.combo;
+          rewardComboMilestone(p.x + p.w / 2, p.y - 30);
+          var tsc = e.k === "leopard" ? 250 : 180;
+          GS.score += tsc;
+          GS.sKill += tsc;
+          popText(e.x + e.w / 2, e.y, "冲撞!+" + tsc, "#8aff5a");
+          sTackle();
+          addShake(5);
+          freeze = 0.04;
+          p.vx *= 0.74;
+          p.vy = Math.min(p.vy, -140);
+          burst(e.x + e.w / 2, e.y + e.h / 2, "spark", 10, 260);
+        } else damagePlayer();
       }
     }
   }
-  /* 小怪物理隔离:互相推开+转向,不再穿模叠一起 */
-  for (var si = 0; si < ents.length; si++) {
-    var sa = ents[si];
-    if (sa.dead || sa.gone || sa.k === "move" || sa.k === "bird" || sa.k === "raven" || sa.k === "miniboss") continue;
-    for (var sj = si + 1; sj < ents.length; sj++) {
-      var sb = ents[sj];
-      if (sb.dead || sb.gone || sb.k === "move" || sb.k === "bird" || sb.k === "raven" || sb.k === "miniboss") continue;
-      if (overlap(sa.x, sa.y, sa.w, sa.h, sb.x, sb.y, sb.w, sb.h)) {
-        if (sa.x < sb.x) {
-          sa.x -= 2.5;
-          sb.x += 2.5;
-          sa.face = -1;
-          sb.face = 1;
-        } else {
-          sa.x += 2.5;
-          sb.x -= 2.5;
-          sa.face = 1;
-          sb.face = -1;
-        }
+}
+/* 小怪物理隔离:互相推开+转向,不再穿模叠一起 */
+for (var si = 0; si < ents.length; si++) {
+  var sa = ents[si];
+  if (
+    sa.dead ||
+    sa.gone ||
+    sa.k === "move" ||
+    sa.k === "bird" ||
+    sa.k === "raven" ||
+    sa.k === "miniboss" ||
+    sa.k === "cannon"
+  )
+    continue;
+  for (var sj = si + 1; sj < ents.length; sj++) {
+    var sb = ents[sj];
+    if (
+      sb.dead ||
+      sb.gone ||
+      sb.k === "move" ||
+      sb.k === "bird" ||
+      sb.k === "raven" ||
+      sb.k === "miniboss" ||
+      sb.k === "cannon"
+    )
+      continue;
+    if (overlap(sa.x, sa.y, sa.w, sa.h, sb.x, sb.y, sb.w, sb.h)) {
+      if (sa.x < sb.x) {
+        sa.x -= 2.5;
+        sb.x += 2.5;
+        sa.face = -1;
+        sb.face = 1;
+      } else {
+        sa.x += 2.5;
+        sb.x -= 2.5;
+        sa.face = 1;
+        sb.face = -1;
       }
     }
   }
-  /* 互推后若嵌进墙里:退回来(防穿模) */
-  for (var sk = 0; sk < ents.length; sk++) {
-    var sw9 = ents[sk];
-    if (sw9.dead || sw9.gone || sw9.k === "move" || sw9.k === "bird" || sw9.k === "raven") continue;
-    var l9 = Math.floor((sw9.x + 2) / T),
-      r9 = Math.floor((sw9.x + sw9.w - 2) / T),
-      m9 = Math.floor((sw9.y + sw9.h / 2) / T);
-    if (solid(tileAt(l9, m9))) {
-      sw9.x = (l9 + 1) * T + 0.02;
-      sw9.face = 1;
-    } else if (solid(tileAt(r9, m9))) {
-      sw9.x = r9 * T - sw9.w - 0.02;
-      sw9.face = -1;
-    }
+}
+/* 互推后若嵌进墙里:退回来(防穿模) */
+for (var sk = 0; sk < ents.length; sk++) {
+  var sw9 = ents[sk];
+  if (sw9.dead || sw9.gone || sw9.k === "move" || sw9.k === "bird" || sw9.k === "raven" || sw9.k === "cannon") continue;
+  var l9 = Math.floor((sw9.x + 2) / T),
+    r9 = Math.floor((sw9.x + sw9.w - 2) / T),
+    m9 = Math.floor((sw9.y + sw9.h / 2) / T);
+  if (solid(tileAt(l9, m9))) {
+    sw9.x = (l9 + 1) * T + 0.02;
+    sw9.face = 1;
+  } else if (solid(tileAt(r9, m9))) {
+    sw9.x = r9 * T - sw9.w - 0.02;
+    sw9.face = -1;
   }
-  for (var k = ents.length - 1; k >= 0; k--) {
-    if (ents[k].gone || (ents[k].dead && ents[k].squash < 0)) {
-      if (ents[k].mesh && dynGroup) {
-        dynGroup.remove(ents[k].mesh);
-        ents[k].mesh = null;
-      }
-      ents.splice(k, 1);
+}
+for (var k = ents.length - 1; k >= 0; k--) {
+  if (ents[k].gone || (ents[k].dead && ents[k].squash < 0)) {
+    if (ents[k].mesh && dynGroup) {
+      dynGroup.remove(ents[k].mesh);
+      ents[k].mesh = null;
     }
+    ents.splice(k, 1);
   }
 }
 function overlap(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -1947,20 +2165,18 @@ function startBossIntro() {
     face: -1,
     state: "idle",
     t: 0,
-    hp: 3,
-    maxhp: 3,
+    hp: 6,
+    maxhp: 6,
     stun: 0,
     warn: 0,
     hurt: 0,
-    atk: 1.8,
+    atk: 2.0,
     dead: false,
     phase: 1,
     thrown: false,
   };
-  if (!GS.auto) {
-    PL.big = true;
-    PL.inv = Math.max(PL.inv, 1.5);
-  }
+  PL.big = true;
+  PL.inv = Math.max(PL.inv, 1.5);
   spawnBoss3D();
 }
 function updateBoss(dt) {
@@ -1969,28 +2185,73 @@ function updateBoss(dt) {
   if (!b) return;
   b.t += dt;
   b.hurt = Math.max(0, b.hurt - dt);
-  if (b.hp <= 2 && b.phase === 1) {
+  if (b.hp <= 2 && b.phase < 3) {
+    b.phase = 3;
+    popText(b.x + b.w / 2, b.y - 30, "Anthropic Dario:数据洪流!!", "#ff2a9a");
+    sWarn();
+    addShake(10);
+    flash = 0.7;
+  } else if (b.hp <= 4 && b.phase < 2) {
     b.phase = 2;
     popText(b.x + b.w / 2, b.y - 30, "Anthropic Dario:封你账号!!", "#c05aff");
     sWarn();
     addShake(8);
     flash = 0.6;
   }
+  var dashSpd = b.phase === 3 ? 720 : b.phase === 2 ? 650 : 560;
+  var stunT = b.phase === 3 ? 2.2 : b.phase === 2 ? 2.6 : 3.2;
   if (b.state === "idle") {
     b.face = p.x > b.x ? 1 : -1;
-    b.x = clamp(b.x + b.face * (b.phase === 2 ? 122 : 92) * dt, 32 * T, 93 * T - b.w); /* 别走出竞技场 */
+    b.x = clamp(b.x + b.face * (36 + b.phase * 24) * dt, 32 * T, 93 * T - b.w); /* 别走出竞技场 */
     b.atk -= dt;
     if (b.atk <= 0) {
-      if (Math.random() < (b.phase === 2 ? 0.55 : 0.35)) {
+      var roll = Math.random();
+      var slamP = b.phase === 3 ? 0.34 : b.phase === 2 ? 0.16 : 0;
+      if (roll < slamP) {
+        b.state = "slamJump";
+        b.vy = -1000;
+        b.slamVx = clamp((p.x - b.x) * 1.15, -540, 540);
+        sHowl();
+        addShake(4);
+      } else if (roll < slamP + (b.phase === 1 ? 0.52 : 0.44)) {
         b.state = "throw";
         b.warn = 0.6;
         b.thrown = false;
         sWarn();
       } else {
         b.state = "warn";
-        b.warn = b.phase === 2 ? 0.6 : 0.9;
+        b.warn = b.phase === 1 ? 0.85 : 0.58;
         sWarn();
       }
+    }
+  } else if (b.state === "slamJump") {
+    /* 跃起砸向牛来位置:落地掀起双向冲击波,落地硬直=惩罚窗口 */
+    b.vy += 1500 * dt;
+    b.y += b.vy * dt;
+    b.x = clamp(b.x + b.slamVx * dt, 32 * T, 93 * T - b.w);
+    var gRow = Math.floor((b.y + b.h) / T),
+      gl2 = false;
+    var sx0 = Math.floor((b.x + 8) / T),
+      sx1 = Math.floor((b.x + b.w - 8) / T);
+    for (var sq2 = sx0; sq2 <= sx1; sq2++) {
+      if (solid(tileAt(sq2, gRow))) {
+        b.y = gRow * T - b.h - 0.01;
+        gl2 = true;
+        break;
+      }
+    }
+    if (gl2) {
+      addShake(14);
+      sBreak();
+      freeze = 0.07;
+      burst(b.x + b.w / 2, b.y + b.h, "shard", 12, 300);
+      var wYc = Math.floor((b.y + b.h + 4) / T) * T - 14;
+      fires.push({ x: b.x - 8, y: wYc, vx: -430, vy: 0, t: 0, wave: true });
+      fires.push({ x: b.x + b.w + 8, y: wYc, vx: 430, vy: 0, t: 0, wave: true });
+      b.state = "stun";
+      b.stun = 1.25;
+      b.vx = 0;
+      popText(b.x + b.w / 2, b.y - 18, "落地硬直!", "#ffd23f");
     }
   } else if (b.state === "warn") {
     b.warn -= dt;
@@ -1998,14 +2259,14 @@ function updateBoss(dt) {
     if (b.warn <= 0) {
       b.state = "dash";
       b.face = p.x > b.x ? 1 : -1;
-      b.vx = b.face * (b.phase === 2 ? 650 : 540);
+      b.vx = b.face * dashSpd;
       sHowl();
     }
   } else if (b.state === "throw") {
     b.warn -= dt;
     if (!b.thrown && b.warn < 0.3) {
       b.thrown = true;
-      var nFb = b.phase === 2 ? 3 : 2;
+      var nFb = b.phase === 3 ? 4 : b.phase === 2 ? 3 : 2;
       for (var fi = 0; fi < nFb; fi++) {
         var ft2 = rnd(0.7, 0.95);
         var sx2 = b.x + b.w / 2 + b.face * 36,
@@ -2013,7 +2274,7 @@ function updateBoss(dt) {
         fires.push({
           x: sx2,
           y: sy2,
-          vx: (p.x + p.w / 2 - sx2) / ft2 + (fi - 1) * 55,
+          vx: (p.x + p.w / 2 - sx2) / ft2 + (fi - (nFb - 1) / 2) * 55,
           vy: (p.y - sy2 - 490 * ft2 * ft2) / ft2,
           t: 0,
         });
@@ -2023,26 +2284,32 @@ function updateBoss(dt) {
     }
     if (b.warn <= 0) {
       b.state = "idle";
-      b.atk = rnd(b.phase === 2 ? 1.3 : 2.2, b.phase === 2 ? 2.1 : 3.4);
+      b.atk = rnd(b.phase === 3 ? 0.9 : b.phase === 2 ? 1.3 : 2.2, b.phase === 3 ? 1.7 : b.phase === 2 ? 2.1 : 3.4);
     }
   } else if (b.state === "dash") {
     b.x += b.vx * dt;
     var left = Math.floor(b.x / T),
       right = Math.floor((b.x + b.w) / T);
     var midty = Math.floor((b.y + b.h / 2) / T);
-    if (
-      (b.vx > 0 && solid(tileAt(right, midty))) ||
-      (b.vx < 0 && solid(tileAt(left, midty))) ||
-      b.x < 150 ||
-      b.x > 95 * T - 40 - b.w
-    ) {
+    var nailed = false;
+    if (b.vx > 0 && solid(tileAt(right, midty))) {
+      b.x = right * T - b.w - 2;
+      nailed = true;
+    } else if (b.vx < 0 && solid(tileAt(left, midty))) {
+      b.x = (left + 1) * T + 2;
+      nailed = true;
+    } else if (b.x < 2 * T || b.x > (curLV.w - 2) * T - b.w) {
+      nailed = true;
+    }
+    if (nailed) {
       addShake(12);
       sBreak();
       freeze = 0.08;
       b.state = "stun";
-      b.stun = 3.2;
+      b.stun = stunT;
       b.vx = 0;
       burst(b.x + b.w / 2, b.y + b.h / 2, "shard", 10, 260);
+      popText(b.x + b.w / 2, b.y - 18, "撞晕了——快攻!", "#ffd23f");
     }
   } else if (b.state === "stun") {
     b.stun -= dt;
@@ -2061,75 +2328,45 @@ function updateBoss(dt) {
       });
     if (b.stun <= 0) {
       b.state = "idle";
-      b.atk = rnd(1.8, 3.0);
+      b.atk = rnd(0.8, 1.8);
     }
   }
   if (!b.dead && !p.dead && GS.state === "play") {
     var ov = overlap(b.x + 6, b.y + 4, b.w - 12, b.h - 8, p.x + 4, p.y + 3, p.w - 8, p.h - 3);
     if (ov) {
-      if (GS.auto) {
-        /* 牛来模式:直接撞倒 Dario */
-        if (b.hurt <= 0) {
-          b.hp--;
-          b.hurt = 1.2;
-          b.state = "idle";
-          b.atk = 2.2;
-          sBreak();
-          addShake(10);
-          freeze = 0.06;
-          burst(b.x + b.w / 2, b.y + 30, "spark", 14, 300);
-          popText(
-            b.x + b.w / 2,
-            b.y - 16,
-            b.hp > 0 ? "Anthropic Dario HP:" + b.hp : "Anthropic Dario 崩了!",
-            "#ff5a5a",
-          );
-          if (b.hp <= 0) {
-            defeatBoss();
-          }
-        }
-        p.vy = -560;
-      } else {
+      {
         var stomping = p.vy > 0 && p.y + p.h - 8 < b.y + b.h * 0.55;
-        if (b.state === "stun" && b.hurt <= 0) {
-          b.hp--;
-          b.hurt = 1.2;
-          b.state = "idle";
-          b.atk = 2.2;
-          p.vy = -520;
-          p.vx = -p.face * 180;
-          sBreak();
-          addShake(10);
-          freeze = 0.06;
-          burst(b.x + b.w / 2, b.y + 30, "spark", 14, 300);
-          popText(
-            b.x + b.w / 2,
-            b.y - 16,
-            b.hp > 0 ? "Anthropic Dario HP:" + b.hp : "Anthropic Dario 崩了!",
-            "#ff5a5a",
-          );
-          if (b.hp <= 0) defeatBoss();
-        } else if (stomping) {
-          /* 踩头永远弹起;无敌帧内不重复计伤、绝不扣血 */
-          p.vy = keys.jump ? -840 : -560;
+        if (b.state === "stun") {
+          /* 硬直窗口:任何方式接触都能重创 */
+          if (stomping) p.vy = keys.jump ? -840 : -560;
           if (b.hurt <= 0) {
             b.hp--;
             b.hurt = 1.2;
             b.state = "idle";
-            b.atk = 2.2;
+            b.atk = 1.6;
+            if (Math.abs(p.vx) > 285) {
+              p.vx = -p.face * 260;
+              p.vy = -360;
+              sTackle();
+            } else p.vy = Math.max(p.vy, -560);
             sBreak();
             addShake(10);
             freeze = 0.06;
+            burst(b.x + b.w / 2, b.y + 30, "spark", 14, 300);
             popText(
               b.x + b.w / 2,
               b.y - 16,
               b.hp > 0 ? "Anthropic Dario HP:" + b.hp : "Anthropic Dario 崩了!",
               "#ff5a5a",
             );
-            burst(b.x + b.w / 2, b.y + 30, "spark", 14, 300);
-            if (b.hp <= 0) {
-              defeatBoss();
-            }
+            if (b.hp <= 0) defeatBoss();
+          }
+        } else if (stomping) {
+          /* 金边眼镜护盾:非硬直踩头只弹起,不破防 */
+          p.vy = keys.jump ? -840 : -560;
+          if (Math.random() < 0.3) {
+            sBump();
+            popText(b.x + b.w / 2, b.y - 16, "护盾!引他撞墙!", "#8ad4ff");
           }
         } else if (p.star > 0 && b.hurt <= 0) {
           b.hp--;
@@ -2138,25 +2375,21 @@ function updateBoss(dt) {
           else {
             burst(b.x + b.w / 2, b.y + 30, "spark", 10, 260);
             sHurt();
+            popText(b.x + b.w / 2, b.y - 16, "无敌牛角破防!HP:" + b.hp, "#5ad4ff");
           }
           p.vy = -500;
         } else if (Math.abs(p.vx) > 285 && b.hurt <= 0) {
           b.hp--;
           b.hurt = 1.2;
           b.state = "idle";
-          b.atk = 2.0;
+          b.atk = 1.6;
           p.vx = -p.face * 280;
           p.vy = -360;
           sTackle();
           addShake(9);
           freeze = 0.06;
           burst(b.x + b.w / 2, b.y + 30, "spark", 14, 300);
-          popText(
-            b.x + b.w / 2,
-            b.y - 16,
-            b.hp > 0 ? "Anthropic Dario HP:" + b.hp : "Anthropic Dario 崩了!",
-            "#ff5a5a",
-          );
+          popText(b.x + b.w / 2, b.y - 16, b.hp > 0 ? "冲撞破防! HP:" + b.hp : "Anthropic Dario 崩了!", "#ff5a5a");
           if (b.hp <= 0) defeatBoss();
         } else {
           damagePlayer();
@@ -2170,28 +2403,31 @@ function updateFires(dt) {
   for (var i = fires.length - 1; i >= 0; i--) {
     var f = fires[i];
     f.t += dt;
-    f.vy += 980 * dt;
+    if (!f.wave) f.vy += 980 * dt; /* 冲击波贴地飞行,不受重力 */
     f.x += f.vx * dt;
     f.y += f.vy * dt;
-    if (Math.random() < 0.5)
+    if (Math.random() < (f.wave ? 0.8 : 0.5))
       part({
-        x: f.x,
-        y: f.y,
+        x: f.x + rnd(-6, 6),
+        y: f.y + rnd(-8, 8),
         vx: rnd(-30, 30),
-        vy: rnd(-40, 10),
+        vy: rnd(-70, -10),
         g: -60,
         life: 0.3,
         t: 0,
         type: "dust",
-        size: 3,
+        size: f.wave ? 5 : 3,
         col: pick(["#ff8a3f", "#ffc63f", "#ff5a3f"]),
       });
-    var hitP = !p.dead && GS.state === "play" && overlap(f.x - 9, f.y - 9, 18, 18, p.x + 3, p.y + 3, p.w - 6, p.h - 3);
-    if (hitP && !GS.auto) damagePlayer(); /* 牛来模式:火球都躲开 */
+    var hitP =
+      !p.dead &&
+      GS.state === "play" &&
+      overlap(f.x - 12, f.y - 12, f.wave ? 24 : 18, f.wave ? 24 : 18, p.x + 3, p.y + 3, p.w - 6, p.h - 3);
+    if (hitP) damagePlayer();
     var tx = Math.floor(f.x / T),
-      ty = Math.floor(f.y / T);
-    if (hitP || solid(tileAt(tx, ty)) || f.t > 6 || f.y > H + 60) {
-      burst(f.x, f.y, "fir", 8, 180);
+      ty = Math.floor((f.y + (f.wave ? 10 : 0)) / T);
+    if (hitP || solid(tileAt(tx, ty)) || f.t > (f.wave ? 4 : 6) || f.y > H + 60) {
+      burst(f.x, f.y, "fir", f.wave ? 10 : 8, f.wave ? 220 : 180);
       if (f.mesh && dynGroup) {
         dynGroup.remove(f.mesh);
         f.mesh = null;
@@ -2204,6 +2440,7 @@ function defeatBoss() {
   var b = GS.boss;
   b.dead = true;
   GS.bossActive = false;
+  markCleared(19);
   for (var i2 = fires.length - 1; i2 >= 0; i2--) {
     if (fires[i2].mesh && dynGroup) dynGroup.remove(fires[i2].mesh);
   }
@@ -2252,6 +2489,9 @@ function startClear() {
   addShake(4);
   PL.vx = 0;
   PL.vy = 0;
+  markCleared(GS.li);
+  var nxT = GS.li + 1;
+  if (nxT < LEVELS.length) popText(W / 2, H / 2 - 130, "解锁第 " + (nxT + 1) + " 关!", "#8aff5a");
   GS.perfect = true;
   for (var i = 0; i < coinsEnt.length; i++) {
     if (!coinsEnt[i].taken) {
@@ -2276,7 +2516,7 @@ function handleDead(dt) {
   PL.vy += 1500 * dt;
   PL.y += PL.vy * dt;
   if (GS.deadT > 1.8) {
-    if (!GS.auto) GS.lives--;
+    GS.lives--;
     if (GS.lives < 0) {
       GS.state = "gameover";
       if (GS.score > GS.hs) {
@@ -2287,6 +2527,8 @@ function handleDead(dt) {
       }
       musicStop();
     } else loadLevel(GS.li, false);
+    /* 重生短暂无敌:防止刚落地就被守尸的敌人秒杀 */
+    PL.inv = Math.max(PL.inv, 1.5);
   }
 }
 function handleClear(dt) {
@@ -2388,350 +2630,18 @@ function handleWinseq(dt) {
   }
 }
 
-/* ============ AI 全自动闯关 ============ */
-var AIB = { stuckT: 0, lastX: 0, cool: 0, jH: 0, mode: "run", modeT: 0, fails: 0 };
-function resetAIControl() {
-  AIB.stuckT = 0;
-  AIB.lastX = 0;
-  AIB.cool = 0;
-  AIB.jH = 0;
-  AIB.mode = "run";
-  AIB.modeT = 0;
-  AIB.fails = 0;
-}
 function flagCenterX() {
   return curLV.flagX * T + T / 2;
-}
-function groundBelow(tx, ty) {
-  if (tx < 0 || tx >= curLV.w) return -1;
-  for (var y = Math.max(0, ty); y < 15; y++) {
-    var c = tileAt(tx, y);
-    if (solid(c) || c === 9 || c === 16) return y;
-  }
-  return -1;
-}
-/* ============ 牛来模式驾驶:无敌自动跳跃·绕墙·见坑就跳·见 Boss 就撞 ============ */
-function aiControl(dt) {
-  var p = PL;
-  AIB.cool -= dt;
-  keys.run = true;
-  keys.left = false;
-  keys.right = true;
-  var px = p.x + p.w / 2,
-    feet = p.y + p.h;
-  var footRow = Math.max(0, Math.floor((feet - 4) / T));
-  var wantJump = false,
-    hold = 0.55;
-  /* 前方没地面(坑/岩浆口) → 提前跳 */
-  var gapEdge = -1;
-  for (var d = 10; d <= 180; d += 10) {
-    var gx = Math.floor((px + d) / T);
-    if (groundBelow(gx, Math.max(0, footRow)) < 0) {
-      gapEdge = d;
-      break;
-    }
-  }
-  if (p.ground && gapEdge >= 0 && gapEdge < 56) {
-    wantJump = true;
-    hold = 0.62;
-  }
-  /* 前方挡路(地面上的墙/管道) → 提前起跳。 */
-  if (p.ground && gapEdge < 0) {
-    var fx = Math.floor((px + 34) / T);
-    if (solid(tileAt(fx, footRow - 1)) && !solid(tileAt(fx, footRow - 2)) && !solid(tileAt(fx, footRow + 1))) {
-      wantJump = true;
-      hold = 0.5;
-    }
-  }
-  /* Boss战:冲向 Anthropic Dario,贴身就是撞,撞完反弹再回 */
-  if (GS.boss && !GS.boss.dead && GS.state === "play") {
-    var b = GS.boss,
-      bx = b.x + b.w / 2;
-    if (Math.abs(bx - px) > 70) {
-      keys.right = bx > px;
-      keys.left = bx < px;
-    } else {
-      keys.right = false;
-      keys.left = false;
-      if (p.ground) wantJump = true;
-    }
-    if (px > 92 * T) {
-      keys.right = false;
-      keys.left = true;
-    }
-    if (px < 7 * T) {
-      keys.left = false;
-      keys.right = true;
-    }
-  }
-  /* 竞技场边缘:防止跑出地图。 */
-  if (px > curLV.w * T - 3 * T) {
-    keys.right = false;
-    keys.left = true;
-  }
-  /* 死亡回升后继续 */
-  if (!p.dead && GS.state === "play" && p.y > H + 40 && GS.auto) {
-    p.y = 5 * T;
-    p.vy = -420;
-  }
-  /* Reach the visible flag pole deterministically instead of stopping in a dead zone. */
-  if (curLV.flagX > 0 && px >= flagCenterX() - T * 0.45 && GS.state === "play") {
-    resetKeys();
-    startClear();
-    return;
-  }
-  if (wantJump && p.ground && AIB.cool <= 0) {
-    justPressed.jump = true;
-    AIB.cool = 0.5;
-    AIB.jH = hold;
-  }
-  if (AIB.jH > 0) {
-    AIB.jH -= dt;
-    keys.jump = true;
-  } else keys.jump = false;
-}
-function aiControlOld(dt) {
-  var p = PL;
-  AIB.cool -= dt;
-  keys.run = true;
-  keys.left = false;
-  keys.right = true;
-  var px = p.x + p.w / 2,
-    feet = p.y + p.h;
-  var footRow = Math.max(0, Math.floor((feet - 4) / T));
-  var cfx = Math.floor((px + 30) / T),
-    cfy = Math.floor((feet - 8) / T);
-  var wantJump = false,
-    hold = 0.35;
-  if (AIB.mode === "backoff") {
-    /* 后撤助跑:拉开距离再冲刺起跳(治高墙/宽坑) */
-    AIB.modeT -= dt;
-    keys.right = false;
-    keys.left = true;
-    if (AIB.modeT <= 0) {
-      AIB.mode = "run";
-      AIB.stuckT = 0;
-      AIB.lastX = p.x;
-    }
-  } else {
-    /* —— 道具优先:奶瓶/铃铛/星星主动去吃 —— */
-    var tgt = null,
-      bd = 1e9;
-    for (var ti2 = 0; ti2 < itms.length; ti2++) {
-      var im = itms[ti2];
-      var ddx = im.x + 10 - px,
-        ddy = im.y + 11 - feet,
-        ad = Math.abs(ddx);
-      /* Never turn back for a missed item; completion takes priority over cleanup. */
-      if (ddx >= -4 && ddx < 300 && ddy > -200 && ddy < 130 && ad < bd) {
-        bd = ad;
-        tgt = im;
-      }
-    }
-    if (tgt) {
-      var tgtDx = tgt.x + 10 - px;
-      keys.right = tgtDx > 4;
-      keys.left = tgtDx < -4;
-      if (tgt.y + 11 < feet - 44 && Math.abs(tgtDx) < 80 && p.ground) {
-        wantJump = true;
-        hold = 0.4;
-      }
-    }
-    /* —— 缺口:留出人工碰撞模式所需的完整助跑距离 —— */
-    var gapEdge = -1;
-    for (var d = 10; d <= 170; d += 12) {
-      var gx = Math.floor((px + d) / T);
-      if (groundBelow(gx, footRow) < 0) {
-        gapEdge = d;
-        break;
-      }
-    }
-    if (p.ground && gapEdge >= 0 && gapEdge < 82) {
-      wantJump = true;
-      hold = 0.62;
-    }
-    /* —— 墙/管道:持续向前并完整蓄跳，避免在墙前反复后撤卡死 —— */
-    var wallLow = solid(tileAt(cfx, cfy)) && !solid(tileAt(cfx, cfy - 1));
-    var wallHigh = solid(tileAt(cfx, cfy)) && solid(tileAt(cfx, cfy - 1));
-    if (!tgt && p.ground && (wallLow || wallHigh)) {
-      keys.right = true;
-      keys.left = false;
-      wantJump = true;
-      hold = 0.62;
-    }
-    /* —— 头顶?/砖块:对齐后跳起顶(主动吃奶/铃铛/星星/金币) —— */
-    if (!tgt && p.ground && !wantJump && (gapEdge < 0 || gapEdge > 90)) {
-      var bRow = cfy - 3;
-      for (var hc = cfx; hc >= cfx - 1; hc--) {
-        var hv = tileAt(hc, bRow);
-        var blw = tileAt(hc, bRow + 1);
-        if (hv >= 3 && hv <= 7 && !solid(blw) && blw !== 13 && blw !== 14) {
-          var bx2 = hc * T + T / 2;
-          if (Math.abs(bx2 - px) < 24) {
-            wantJump = true;
-            hold = 0.32;
-          } else if (bx2 > px) {
-            keys.right = true;
-            keys.left = false;
-          } else {
-            keys.right = false;
-            keys.left = true;
-          }
-          break;
-        }
-      }
-    }
-    /* 空中救援:保持向前越过危险区，避免回拉后反复掉回同一缺口。 */
-    if (!p.ground && p.vy > 150) {
-      var aheadOK = groundBelow(Math.floor((px + 40) / T), Math.floor((p.y + p.h) / T)) >= 0;
-      if (!aheadOK) {
-        keys.right = true;
-        keys.left = false;
-      }
-    }
-    /* 敌人 → 跳踩 */
-    if (!(tgt && bd < 140)) {
-      for (var i = 0; i < ents.length; i++) {
-        var e = ents[i];
-        if (e.dead || e.gone || e.k === "move" || e.k === "bird") continue;
-        var dx = e.x + e.w / 2 - px,
-          dy = e.y + e.h - feet;
-        if (dx > -6 && dx < 128 && dy > -84 && dy < 44) {
-          wantJump = true;
-          hold = 0.4;
-        }
-      }
-    }
-    /* 火球 → 跳避 */
-    for (var f = 0; f < fires.length; f++) {
-      var ff = fires[f];
-      var fdx = ff.x - px,
-        fdy = ff.y - (p.y + 18);
-      if (Math.abs(fdy) < 54 && Math.abs(fdx) < 160 && ((fdx > 0 && ff.vx < 0) || (fdx < 0 && ff.vx > 0))) {
-        wantJump = true;
-        hold = 0.4;
-      }
-    }
-    /* 尖刺/岩浆:提前两格起跳。 */
-    for (var hd = 30; hd <= 86; hd += 14) {
-      var h1 = tileAt(Math.floor((px + hd) / T), Math.floor((feet + 6) / T));
-      if (h1 === 10 || h1 === 11) {
-        wantJump = true;
-        hold = 0.62;
-        break;
-      }
-    }
-    /* Boss 战:贴身顺方向跳过冲刺,不背向逃跑(防止退进岩浆自杀) */
-    if (GS.boss && !GS.boss.dead && GS.state === "play") {
-      var b = GS.boss,
-        bx = b.x + b.w / 2;
-      if (b.state === "stun") {
-        keys.right = bx > px + 10;
-        keys.left = bx < px - 10;
-        if (Math.abs(bx - px) < 95 && p.ground) {
-          wantJump = true;
-          hold = 0.62;
-        }
-      } else if (b.state === "dash") {
-        keys.right = b.vx > 0;
-        keys.left = b.vx < 0; /* 顺着冲撞方向跳过它头顶 */
-        if (Math.abs(bx - px) < 270 && p.ground) {
-          wantJump = true;
-          hold = 0.62;
-        }
-      } else if (b.state === "warn") {
-        keys.right = bx < px;
-        keys.left = bx > px;
-        if (Math.abs(bx - px) < 300 && p.ground) {
-          wantJump = true;
-          hold = 0.4;
-        }
-      } else if (b.state === "throw") {
-        keys.right = false;
-        keys.left = false;
-        if (p.ground && fires.length > 0) {
-          wantJump = true;
-          hold = 0.4;
-        }
-      } else {
-        keys.right = bx > px + 170;
-        keys.left = bx < px - 170;
-      }
-      /* 竞技场边界:左边岩浆右边墙,不许出界 */
-      if (px < 34 * T) {
-        keys.left = false;
-        keys.right = true;
-      }
-      if (px > 93 * T) {
-        keys.right = false;
-        keys.left = true;
-      }
-    }
-    /* Stop only inside the visible flag trigger range. */
-    if (curLV.flagX > 0 && px >= flagCenterX() - T * 0.45) {
-      keys.right = false;
-      keys.left = false;
-    }
-    /* 卡死检测:交替 跳/后撤助跑 */
-    if (Math.abs(p.x - AIB.lastX) < 6) {
-      AIB.stuckT += dt;
-    } else {
-      AIB.stuckT = 0;
-      AIB.lastX = p.x;
-    }
-    if (AIB.stuckT > 1.0 && p.ground) {
-      AIB.fails++;
-      AIB.stuckT = 0;
-      if (wallLow || wallHigh) {
-        if (AIB.fails % 2 === 0 || AIB.fails >= 3) {
-          AIB.mode = "backoff";
-          AIB.modeT = AIB.fails >= 3 ? 1.0 : 0.6;
-        } else {
-          wantJump = true;
-          hold = 0.62;
-        }
-      } else {
-        /* On an edge, reversing repeats the same fall; jump forward instead. */
-        keys.right = true;
-        keys.left = false;
-        wantJump = true;
-        hold = 0.62;
-      }
-    }
-    if (AIB.fails > 0 && p.ground && !wallHigh && Math.abs(p.vx) > 240) {
-      AIB.fails = 0;
-    }
-  }
-  /* Non-Boss automatic runs keep a steady hop cadence across adjacent hazards. */
-  if (!GS.boss && p.ground && AIB.cool <= 0 && keys.right && !keys.left) {
-    wantJump = true;
-    hold = Math.max(hold, 0.48);
-  }
-  /* 冷却0.5s:防止土狼时间内空中二段跳(连跳bug) */
-  if (wantJump && p.ground && AIB.cool <= 0) {
-    justPressed.jump = true;
-    AIB.cool = 0.5;
-    AIB.jH = hold;
-  }
-  if (AIB.jH > 0) {
-    AIB.jH -= dt;
-    keys.jump = true;
-  } else keys.jump = false;
 }
 
 /* ============ 更新 ============ */
 function update(dt) {
   GT += dt;
-  if (GS.hollerT > 0) {
-    GS.hollerT = Math.max(0, GS.hollerT - dt);
-    if (GS.hollerT === 0) GS.holler = null;
-  }
   if (GS.levelIntro > 0) GS.levelIntro = Math.max(0, GS.levelIntro - dt);
   if (freeze > 0) {
     updateFX(dt);
     return;
   }
-  if (GS.auto && GS.state === "play") aiControlOld(dt);
   if (GS.state === "play") {
     updateCrumbles(dt);
     updatePlayer(dt);
@@ -2793,34 +2703,6 @@ var THREE_OK = false,
 var statics = null;
 var mCalf = null,
   mBoss = null;
-/* Automatic mode gets one full-screen intro each time it is enabled. */
-var AUTO_INTRO_DURATION = 2.0;
-function niuHoller(txt) {
-  GS.holler = txt;
-  GS.hollerT = AUTO_INTRO_DURATION;
-  GS.hollerLen = AUTO_INTRO_DURATION;
-}
-function setAutoMode(enabled) {
-  enabled = !!enabled;
-  if (GS.auto === enabled) return;
-  if (enabled) GS.livesBeforeAuto = GS.lives;
-  GS.auto = enabled;
-  resetKeys();
-  resetAIControl();
-  if (enabled) {
-    GS.lives = Math.max(99, GS.lives || 0);
-    niuHoller("牛 来 模 式");
-    sNiuLai();
-    addShake(5);
-  } else {
-    if (GS.livesBeforeAuto !== null) GS.lives = GS.livesBeforeAuto;
-    GS.livesBeforeAuto = null;
-    GS.holler = null;
-    GS.hollerT = 0;
-    GS.hollerLen = 0;
-    if (curLV) popText(PL.x + 14, PL.y - 40, "手动模式", "#ffd43f");
-  }
-}
 var meshPool = [];
 if (typeof THREE !== "undefined") {
   try {
@@ -3239,6 +3121,27 @@ function buildBird() {
   return g;
 }
 
+/* ==================== 建模:火球炮台 ====================
+   黑铁底座 + 圆顶 + 发光炮口,朝向随玩家翻转 */
+function buildCannon() {
+  var g = new THREE.Group();
+  var track = box(2.0, 0.5, 1.7, 0x23262f);
+  track.position.y = -0.34;
+  g.add(track);
+  var dome = ball(0.56, 0x39404f, 10, 8);
+  dome.position.y = -0.18;
+  g.add(dome);
+  var barrel = cyl(0.3, 0.38, 1.25, 0x14161d, 10);
+  barrel.rotation.z = -Math.PI / 2;
+  barrel.position.set(0.72, -0.06, 0);
+  g.add(barrel);
+  var muzzle = cyl(0.44, 0.44, 0.24, 0xff8a3f, 10);
+  muzzle.rotation.z = -Math.PI / 2;
+  muzzle.position.set(1.4, -0.06, 0);
+  g.add(muzzle);
+  return g;
+}
+
 /* ==================== 建模:Anthropic Dario ====================
    金边眼镜 CEO · 悬浮算力方块环 · 二阶段过载红光 */
 function buildBoss() {
@@ -3365,7 +3268,12 @@ function buildBoss() {
   orbit.position.y = 2.9;
   g.add(orbit);
   g.userData.orbit = orbit;
-  return g;
+  /* 模型面朝+Z建模,统一包一层转到+X,与朝向同步约定一致(左走不再露背面) */
+  var wrap = new THREE.Group();
+  g.rotation.y = Math.PI / 2;
+  wrap.add(g);
+  wrap.userData = g.userData;
+  return wrap;
 }
 function buildMiniBoss() {
   /* —— GPT 老板 (Ultra Man) 造型:深蓝西装超人,金光大王冠,红光眼睛 —— */
@@ -3463,7 +3371,12 @@ function buildMiniBoss() {
   orbit.position.y = 3.0;
   g.add(orbit);
   g.userData.orbit = orbit;
-  return g;
+  /* 同 buildBoss:面朝+X,左走不露背面 */
+  var wrap2 = new THREE.Group();
+  g.rotation.y = Math.PI / 2;
+  wrap2.add(g);
+  wrap2.userData = g.userData;
+  return wrap2;
 }
 function buildItem3D(k) {
   var g = new THREE.Group();
@@ -3822,7 +3735,8 @@ function buildWorld3D() {
       c3 === 7 ||
       c3 === 8 ||
       c3 === 9 ||
-      c3 === 14
+      c3 === 14 ||
+      c3 === 17
     )
       boxCount++;
     if (c3 === 1) grassCount++;
@@ -3940,6 +3854,13 @@ function buildWorld3D() {
         m4.compose(new THREE.Vector3(p[0], p[1], 0), q4, new THREE.Vector3(1, 1, 1));
         instLava.setMatrixAt(li, m4);
         li++;
+      } else if (c === 17) {
+        /* 旗门铁柱:轰杀守关 GPT 老板后炸开 */
+        m4.compose(new THREE.Vector3(p[0], p[1], 0), q4, new THREE.Vector3(1, 1, 1));
+        instBox.setMatrixAt(bi, m4);
+        instBox.setColorAt(bi, ccol(0x454b5e));
+        worldBlocks[tx + "," + ty] = { kind: "gate", idx: bi };
+        bi++;
       } else if (c === 13 || c === 14) {
         if (c === 13) {
           var pg = new THREE.Group();
@@ -4018,15 +3939,19 @@ function buildWorld3D() {
   if (curLV.flagX > 0) {
     var fpx = worldX(curLV.flagX * T + T / 2);
     var gY = worldY(12 * T);
+    var flagRoot = new THREE.Group();
+    dynGroup.add(flagRoot);
+    /* 击败守关老板后才升起 */
+    flagRoot.visible = false;
     var pole = cyl(0.16, 0.16, 17.6, 0xc4c9cf, 10);
     pole.position.set(fpx, gY + 8.8, 0);
-    dynGroup.add(pole);
+    flagRoot.add(pole);
     var knob = ball(0.34, 0xffd23f, 8, 6);
     knob.position.set(fpx, gY + 17.8, 0);
-    dynGroup.add(knob);
+    flagRoot.add(knob);
     var base = box(1.6, 0.8, 1.6, 0x6a6a72);
     base.position.set(fpx, gY + 0.4, 0);
-    dynGroup.add(base);
+    flagRoot.add(base);
     var flagC = document.createElement("canvas");
     flagC.width = 256;
     flagC.height = 160;
@@ -4073,8 +3998,9 @@ function buildWorld3D() {
     flagM.position.set(1.95, 0, 0);
     flagG.add(flagM);
     flagG.position.set(fpx, gY + 16.2, 0);
-    dynGroup.add(flagG);
+    flagRoot.add(flagG);
     GS.__flagG = flagG;
+    GS.__flagRoot = flagRoot;
   }
   /* 装饰 */
   if (GS.li === 19) buildServerRoom3D();
@@ -4121,8 +4047,9 @@ function buildWorld3D() {
       else if (e.k === "raven") mm = buildRaven();
       else if (e.k === "bird") mm = buildBird();
       else if (e.k === "miniboss") mm = buildMiniBoss();
+      else if (e.k === "cannon") mm = buildCannon();
       if (mm) {
-        mm.scale.setScalar(e.k === "miniboss" ? 1.5 : 1.7);
+        mm.scale.setScalar(e.k === "miniboss" ? 1.5 : e.k === "cannon" ? 2.3 : 1.7);
         dynGroup.add(mm);
         e.mesh = mm;
       }
@@ -4151,6 +4078,10 @@ function refreshWorldBlock(tx, ty) {
   } else if (wb.kind === "used" && wb.idx !== undefined) {
     instBox.setColorAt(wb.idx, ccol(0x9a7a50));
     if (instBox.instanceColor) instBox.instanceColor.needsUpdate = true;
+  } else if (wb.kind === "gate" && wb.idx !== undefined) {
+    /* 旗门轰开:该实例矩阵归零隐藏 */
+    instBox.setMatrixAt(wb.idx, _zeroM4);
+    instBox.instanceMatrix.needsUpdate = true;
   }
 }
 function spawnBoss3D() {
@@ -4192,14 +4123,15 @@ function sync3D() {
     var inTitle = GS.state === "title" || GS.state === "select" || GS.state === "gameover" || GS.state === "win";
     var moving = !inTitle && Math.abs(PL.vx) > 12 && PL.ground;
     var jy = inTitle ? 0 : wy(PL.y + PL.h);
-    mCalf.position.set(inTitle ? -5.5 : wx(PL.x + 14), inTitle ? 0.45 : jy, inTitle ? 1.6 : GS.auto ? 6.2 : 1.4);
+    mCalf.position.set(inTitle ? -5.5 : wx(PL.x + 14), inTitle ? 0.45 : jy, inTitle ? 1.6 : 1.4);
     mCalf.rotation.y = inTitle ? -Math.PI / 2 + Math.sin(GT * 0.5) * 0.28 : PL.face > 0 ? 0 : Math.PI;
     mCalf.rotation.x = PL.star > 0 ? GT * 4 : !PL.ground && !inTitle ? clamp(-PL.vy * 0.0003, -0.22, 0.26) : 0;
     var lean = clamp(-PL.vx * 0.00045, -0.16, 0.16);
     mCalf.rotation.z = (moving ? Math.sin(GT * 13) * 0.04 : PL.big ? 0 : Math.sin(GT * 2) * 0.015) + lean;
     var sq = PL.squash > 0 ? Math.sin((PL.squash / 0.12) * Math.PI) : 0;
     var stretch = !PL.ground && !inTitle ? clamp(-PL.vy * 0.00022, -0.1, 0.16) : 0;
-    var baseSc = (PL.big ? 1.92 : 1.55) * (GS.auto ? 3 : 1);
+    var baseSc = PL.big ? 1.92 : 1.55;
+
     if (inTitle) {
       mCalf.scale.set(3.1, 3.1, 3.1);
     } else {
@@ -4249,13 +4181,18 @@ function sync3D() {
   for (var i = 0; i < ents.length; i++) {
     var e = ents[i];
     if (!e.mesh) continue;
+    /* 已消失的实体隐藏网格,不再同步位置 */
+    if (e.gone) {
+      e.mesh.visible = false;
+      continue;
+    }
     if (e.k === "move") {
       /* The mesh top matches the one-way collision surface at e.y. */
       e.mesh.position.set(worldX(e.x + e.w / 2), worldY(e.y) - 0.25, 0);
       continue;
     }
     e.mesh.position.set(worldX(e.x + e.w / 2), worldY(e.y + e.h), 1.0);
-    e.mesh.rotation.y = e.face > 0 ? 0.3 : Math.PI - 0.3;
+    e.mesh.rotation.y = e.face > 0 ? 0.3 : Math.PI + 0.3; /* 左走也微朝镜头,不露背 */
     if (e.k === "wolf" || e.k === "leopard") {
       var sw2 = Math.sin(e.t * 14) * 0.55;
       if (e.mesh.userData) {
@@ -4279,9 +4216,13 @@ function sync3D() {
       }
     } else if (e.k === "miniboss") {
       var hb = e.hurtT > 0 && ((e.hurtT * 14) | 0) % 2 === 0;
+      /* 分型光晕:紫=追击 橙=弹跳 红=冲锋 蓝=轰炸 品红=狂暴 */
+      var miniGlow =
+        { chase: 0x140820, hopper: 0x241203, charger: 0x240507, lobber: 0x03121f, berserk: 0x1f0526 }[e.style] ||
+        0x000000;
       e.mesh.traverse(function (o) {
         if (o.isMesh && o.material && o.material.emissive && !o.userData.keepGlow) {
-          o.material.emissive.setHex(hb ? 0xaa2200 : 0x000000);
+          o.material.emissive.setHex(hb ? 0xaa2200 : miniGlow);
         }
       });
       if (e.mesh.userData.orbit) e.mesh.userData.orbit.rotation.y = GT * 2.4;
@@ -4300,7 +4241,7 @@ function sync3D() {
   if (mBoss && GS.boss) {
     var b = GS.boss;
     mBoss.position.set(worldX(b.x + b.w / 2), worldY(b.y + b.h), 1.6);
-    mBoss.rotation.y = b.face > 0 ? 0.3 : Math.PI - 0.3;
+    mBoss.rotation.y = b.face > 0 ? 0.3 : Math.PI + 0.3; /* 左走微朝镜头,不露背面 */
     var hurt2 = b.hurt > 0 && ((b.hurt * 12) | 0) % 2 === 0;
     mBoss.traverse(function (o) {
       if (o.isMesh && o.material && o.material.emissive && !o.userData.keepGlow) {
@@ -4346,7 +4287,7 @@ function sync3D() {
       dynGroup.add(ff.mesh);
     }
     ff.mesh.position.set(worldX(ff.x), worldY(ff.y), 1.2);
-    ff.mesh.scale.setScalar(1 + Math.sin(GT * 20 + fq) * 0.12);
+    ff.mesh.scale.setScalar((ff.wave ? 2.1 : 1) * (1 + Math.sin(GT * 20 + fq) * 0.12));
   }
   /* 金币旋转 */
   for (var k2 = 0; k2 < coinsEnt.length; k2++) {
@@ -4724,7 +4665,7 @@ function drawHUD2D(c) {
   c.textAlign = "left";
   hintText(
     c,
-    "M静音 · P暂停 · R重开 · Esc选关 · O牛来模式 · " + VER,
+
     16,
     H - 12,
     "11px " + FONT,
@@ -4745,16 +4686,6 @@ function drawHUD2D(c) {
       "center",
     );
   }
-  /* 牛来模式徽标 */
-  if (GS.auto) {
-    c.save();
-    c.globalAlpha = 0.75 + 0.25 * Math.sin(GT * 4);
-    c.fillStyle = "#5ad4ff";
-    c.font = "bold 15px " + FONT;
-    c.textAlign = "center";
-    hintText(c, "[牛来模式 无敌闯关中]", W / 2, H - 40, "bold 15px " + FONT, "#5ad4ff", "center");
-    c.restore();
-  }
   /* Anthropic Dario 血条 */
   if (GS.boss && (GS.state === "play" || GS.state === "bossintro") && !GS.boss.dead) {
     var bw = 320,
@@ -4771,7 +4702,7 @@ function drawHUD2D(c) {
     c.fillRect(bx, H - 31, bw * frac, 12);
     hintText(
       c,
-      "Anthropic Dario" + (GS.boss.phase === 2 ? " · 封号模式" : ""),
+      "Anthropic Dario" + (GS.boss.phase === 3 ? " · 数据洪流" : GS.boss.phase === 2 ? " · 封号模式" : ""),
       bx,
       H - 42,
       "bold 12px " + FONT,
@@ -4875,48 +4806,6 @@ try {
 } catch (e) {
   titleImg = null;
 }
-function drawAutoIntro(c) {
-  if (!GS.auto || !GS.holler || GS.hollerT <= 0) return;
-  var total = GS.hollerLen || AUTO_INTRO_DURATION;
-  var elapsed = total - GS.hollerT;
-  var alpha = Math.min(1, elapsed / 0.12, GS.hollerT / 0.32);
-  var punch = elapsed < 0.24 ? lerp(1.75, 1, elapsed / 0.24) : 1 + Math.sin(GT * 8) * 0.025;
-  c.save();
-  c.globalAlpha = alpha;
-  c.fillStyle = "rgba(5,4,18,0.94)";
-  c.fillRect(0, 0, W, H);
-  var glow = c.createRadialGradient(W / 2, H / 2, 20, W / 2, H / 2, 420);
-  glow.addColorStop(0, "rgba(255,42,154,0.42)");
-  glow.addColorStop(0.48, "rgba(90,212,255,0.2)");
-  glow.addColorStop(1, "rgba(5,4,18,0)");
-  c.fillStyle = glow;
-  c.fillRect(0, 0, W, H);
-  c.translate(W / 2, H / 2 - 20);
-  c.scale(punch, punch);
-  c.textAlign = "center";
-  c.textBaseline = "middle";
-  c.lineJoin = "round";
-  c.font = "bold 96px " + FONT;
-  c.lineWidth = 18;
-  c.strokeStyle = "rgba(10,4,24,0.98)";
-  c.strokeText(GS.holler, 0, -22);
-  var titleGrad = c.createLinearGradient(0, -70, 0, 30);
-  titleGrad.addColorStop(0, "#fff");
-  titleGrad.addColorStop(0.35, "#ff9adf");
-  titleGrad.addColorStop(1, "#ff2a9a");
-  c.fillStyle = titleGrad;
-  c.fillText(GS.holler, 0, -22);
-  c.font = "bold 28px " + FONT;
-  c.lineWidth = 8;
-  c.strokeStyle = "rgba(10,4,24,0.95)";
-  c.strokeText("AI 全自动 · 无敌闯关", 0, 64);
-  c.fillStyle = "#5ad4ff";
-  c.fillText("AI 全自动 · 无敌闯关", 0, 64);
-  c.font = "bold 18px " + FONT;
-  c.fillStyle = "#ffd23f";
-  c.fillText("妈妈!! 牛来只霸屏这一次!!", 0, 104);
-  c.restore();
-}
 function drawOverlays(c) {
   if (GS.levelIntro > 0 && (GS.state === "play" || GS.state === "bossintro")) {
     var a = clamp(Math.min((2.0 - GS.levelIntro) * 2.2, GS.levelIntro), 0, 1);
@@ -4993,7 +4882,6 @@ function drawOverlays(c) {
     c.fillStyle = "rgba(255,40,40," + Math.min(0.5, flash) + ")";
     c.fillRect(0, 0, W, H);
   }
-  drawAutoIntro(c);
 }
 function drawTitle2D(c) {
   c.fillStyle = "rgba(5,6,15,0.25)";
@@ -5030,22 +4918,14 @@ function drawTitle2D(c) {
     hintText(c, "点击 / Enter 选关开始", W / 2, 392 + bob * 0.4, "bold 19px " + FONT, "#fff", "center");
     hintText(
       c,
-      "A = 牛来模式全自动闯关 · ←→/AD 移动 · 空格 跳 · Shift 冲刺",
+      "←→/AD 移动 · 空格跳 · Shift 冲刺 · 踩头连击",
       W / 2,
       424,
       "14px " + FONT,
       "rgba(255,255,255,0.95)",
       "center",
     );
-    hintText(
-      c,
-      "空中连踩出 COMBO · 全速冲刺撞飞敌人 · O 随时开启牛来模式",
-      W / 2,
-      448,
-      "14px " + FONT,
-      "rgba(255,255,255,0.95)",
-      "center",
-    );
+    hintText(c, "空中连踩出 COMBO · 全速冲刺撞飞敌人", W / 2, 448, "14px " + FONT, "rgba(255,255,255,0.95)", "center");
     if (GS.hs > 0) {
       hintText(c, "最高分 " + GS.hs, W / 2, 478, "14px " + FONT, "#ffd23f", "center");
     }
@@ -5062,7 +4942,6 @@ function drawTitle2D(c) {
     c.fillStyle = "#fff";
     c.font = "bold 20px " + FONT;
     hintText(c, "点击 / Enter 选关开始", W / 2, 330, "bold 20px " + FONT, "#fff", "center");
-    hintText(c, "A = 牛来模式全自动闯关", W / 2, 362, "14px " + FONT, "rgba(255,255,255,0.95)", "center");
     if (GS.hs > 0) {
       hintText(c, "最高分 " + GS.hs, W / 2, 392, "14px " + FONT, "#ffd23f", "center");
     }
@@ -5138,17 +5017,24 @@ function drawSelect2D(c) {
     var x = x0 + col * (SEL_CW + SEL_GX),
       y = y0 + r * (SEL_CH + SEL_GY);
     var sel = i === GS.selIdx;
-    c.fillStyle = sel ? "rgba(255,210,63,0.22)" : "rgba(16,16,30,0.6)";
+    var unl = isUnlocked(i);
+    c.fillStyle = !unl ? "rgba(24,26,36,0.75)" : sel ? "rgba(255,210,63,0.22)" : "rgba(16,16,30,0.6)";
     c.fillRect(x, y, SEL_CW, SEL_CH);
-    c.strokeStyle = sel ? "#ffd23f" : worldCol[LEVELS[i].theme];
+    c.strokeStyle = !unl ? "#4a4c56" : sel ? "#ffd23f" : worldCol[LEVELS[i].theme];
     c.lineWidth = sel ? 3 : 1.5;
     c.strokeRect(x, y, SEL_CW, SEL_CH);
-    c.fillStyle = sel ? "#ffd23f" : "#fff";
+    c.fillStyle = !unl ? "#767a86" : sel ? "#ffd23f" : "#fff";
     c.font = "bold 20px " + FONT;
     c.fillText(LEVELS[i].name.split(" ")[0], x + SEL_CW / 2, y + 20);
     c.font = "12px " + FONT;
-    c.fillStyle = sel ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.55)";
+    c.fillStyle = !unl ? "rgba(118,122,134,0.6)" : sel ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.55)";
     c.fillText(LEVELS[i].name.split(" ").slice(1).join(" "), x + SEL_CW / 2, y + 41);
+    if (!unl) {
+      c.fillStyle = "rgba(148,152,164,0.9)";
+      c.font = "bold 11px " + FONT;
+      c.fillText("🔒 未解锁", x + SEL_CW / 2, y + 59);
+      continue;
+    }
     var blv = 0;
     try {
       blv = parseInt(localStorage.getItem("niu_best_lv" + i) || "0", 10) || 0;
@@ -5156,7 +5042,11 @@ function drawSelect2D(c) {
     if (blv > 0) {
       c.fillStyle = "rgba(255,210,63,0.8)";
       c.font = "11px " + FONT;
-      c.fillText("最佳 " + blv, x + SEL_CW / 2, y + 59);
+      c.fillText("最佳 " + blv + (isCleared(i) ? " ✓" : ""), x + SEL_CW / 2, y + 59);
+    } else if (isCleared(i)) {
+      c.fillStyle = "rgba(138,255,90,0.9)";
+      c.font = "bold 11px " + FONT;
+      c.fillText("✓ 已通关", x + SEL_CW / 2, y + 59);
     }
   }
   c.fillStyle = "rgba(255,255,255,0.5)";
@@ -5201,7 +5091,7 @@ function drawOver2D(c) {
   c.font = "bold 58px " + FONT;
   c.textAlign = "center";
   c.textBaseline = "middle";
-  c.fillText(GS.auto ? "牛来被 Anthropic Dario 拿下了…" : "牛来倒下了…", W / 2, H / 2 - 70);
+  c.fillText("牛来倒下了…", W / 2, H / 2 - 70);
   if (GS.boss && GS.boss.dead) {
     /* noop */
   }
@@ -5296,20 +5186,26 @@ cv.addEventListener("pointerdown", function (e) {
       try {
         for (var ci = 0; ci < LEVELS.length; ci++) localStorage.removeItem("niu_best_lv" + ci);
         localStorage.removeItem("niu_best");
+        localStorage.removeItem("niu_clear");
       } catch (err) {}
       GS.hs = 0;
       addShake(3);
       sClick();
-      popText(W / 2 + 90, H / 2 - 30, "已清空成绩", "#8aff5a");
+      popText(W / 2 + 90, H / 2 - 30, "已清空·重新开始", "#8aff5a");
       return;
     }
     var cell = selCellAt(mx, my);
     if (cell >= 0) {
       GS.selIdx = cell;
-      startLevel(cell);
+      if (isUnlocked(cell)) {
+        startLevel(cell);
+      } else {
+        sWarn();
+        addShake(3);
+        popText(W / 2, H / 2, "先通过上一关解锁!", "#ff8a8a");
+      }
     }
   } else if (GS.state === "gameover" || GS.state === "win") {
-    setAutoMode(false);
     GS.state = "title";
     makeSky();
     buildTitle3D();

@@ -1,6 +1,6 @@
 {
   "name": "niu-lai-3d",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "private": true,
   "description": "A zero-runtime-dependency Three.js platform game.",
   "scripts": {
