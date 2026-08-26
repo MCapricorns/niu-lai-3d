@@ -2,10 +2,10 @@
 <html lang="zh-CN">
   <head>
     <!--
-  牛来大冒险 3D · Ox is Coming · v1.10.0
+  牛来大冒险 3D · Ox is Coming · v1.12.0
   Copyright (c) 2026 MCapricorns — https://github.com/MCapricorns/niu-lai-3d
   代码许可: MIT License (详见 LICENSE 文件)
-  文件结构: index.html(骨架) + three.min.js(引擎) + levels.js(关卡) + game.js(逻辑)
+  文件结构: index.html(骨架) + three.min.js(引擎) + mapengine.js(地图引擎) + levels.js(关卡) + game.js(逻辑)
 -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -93,6 +93,13 @@
         height: 78px;
         background: rgba(255, 200, 120, 0.2);
       }
+      #btnS {
+        right: 220px;
+        bottom: 106px;
+        width: 70px;
+        height: 70px;
+        background: rgba(255, 255, 255, 0.18);
+      }
       .tbtn:active {
         background: rgba(255, 255, 255, 0.35);
       }
@@ -106,6 +113,7 @@
       <div class="tbtn" id="btnB">B</div>
       <div class="tbtn" id="btnJ">跳</div>
       <div class="tbtn" id="btnP">坐</div>
+      <div class="tbtn" id="btnS">弹</div>
     </div>
     <script src="three.min.js"></script>
     <script src="mapengine.js"></script>

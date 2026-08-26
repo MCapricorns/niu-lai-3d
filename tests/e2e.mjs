@@ -425,7 +425,7 @@ try {
         passed = false,
         bossSeen = false;
       routeKeyState = {};
-      for (frames = 0; frames < 60 * 25; frames++) {
+      for (frames = 0; frames < 60 * 15; frames++) {
         if (GS.state === "play") {
           var bcmd = botControl();
           if (bcmd.jump && PL.ground && botJumpFrames <= 0) botJumpFrames = Math.round(bcmd.hold * 60);
@@ -440,7 +440,7 @@ try {
         if (PL.x > maxX) maxX = PL.x;
         if (GS.state === "dead" && prevState !== "dead") deaths++;
         prevState = GS.state;
-        if (smokeLevel < 19 && GS.state === "clear") {
+        if (smokeLevel < LEVELS.length - 1 && GS.state === "clear") {
           passed = true;
           break;
         }
@@ -460,10 +460,10 @@ try {
       });
     }
     /* 终站 Boss 可达性:传送到触发点前一格,验证 Dario 登场 */
-    startLevel(19);
+    startLevel(LEVELS.length - 1);
     GS.lives = 99;
     GS.time = 300;
-    PL.x = 23.5 * T;
+    PL.x = 5.5 * T;
     PL.y = 12 * T - 36 - 0.01;
     PL.vx = 0;
     PL.vy = 0;
@@ -486,6 +486,35 @@ try {
     keys.right = false;
     out.bugs.bossTrace = bossTrace;
     out.bugs.bossTriggered = bossOK;
+    /* 奶弹射击:小Boss可击伤;终Boss护盾弹开/解除窗口可击伤 */
+    out.bugs.shots = {};
+    loadLevel(0, true);
+    GS.state = "play";
+    var mbE = null;
+    for (var se = 0; se < ents.length; se++) if (ents[se].k === "miniboss") mbE = ents[se];
+    if (mbE) {
+      mbE.hurtT = 0;
+      camX = mbE.x - 300;
+      shots.push({ x: mbE.x + mbE.w / 2, y: mbE.y + mbE.h / 2, vx: 0, t: 0 });
+      updateShots(0.016);
+      out.bugs.shots.miniHit = mbE.hp < mbE.maxhp;
+    }
+    startLevel(LEVELS.length - 1);
+    startBossIntro();
+    GS.state = "play";
+    var bb = GS.boss;
+    camX = 0;
+    bb.state = "idle";
+    bb.hurt = 0;
+    shots.push({ x: bb.x + bb.w / 2, y: bb.y + bb.h / 2, vx: 0, t: 0 });
+    updateShots(0.016);
+    var hpAfterDeflect = bb.hp;
+    bb.state = "recover";
+    bb.hurt = 0;
+    shots.push({ x: bb.x + bb.w / 2, y: bb.y + bb.h / 2, vx: 0, t: 0 });
+    updateShots(0.016);
+    out.bugs.shots.bossDeflectOK = hpAfterDeflect === bb.maxhp;
+    out.bugs.shots.bossVulnHit = bb.hp < bb.maxhp;
     shake = 0; GS.state = "pause"; render();
     out.bugs.view = { calfScale: mCalf.scale.x, calfZ: mCalf.position.z };
     itms=[];spawnItem("milk",10,8);sync3D();out.bugs.milkScale=itms[0].mesh.scale.x;
@@ -539,7 +568,7 @@ try {
   };
   const near = (actual, expected, tolerance = 0.01) => Math.abs(actual - expected) <= tolerance;
   check(result.initial.three && result.initial.calf && !result.initial.error, "game failed to initialize");
-  check(result.levels.length === 20, `expected 20 levels, got ${result.levels.length}`);
+  check(result.levels.length === 32, `expected 32 levels, got ${result.levels.length}`);
   for (const level of result.levels) check(!level.error && !level.thrown, `level ${level.i + 1} failed to render`);
   check(result.bugs.bigCoinPreserved, "large coin metadata was lost");
   check(near(result.bugs.bump.delta, 0), "used item box moved away from its tile");
@@ -594,9 +623,13 @@ try {
   }
   check(result.bugs.goalState === "clear", "visible flag did not clear the level");
   check(result.bugs.bossTriggered, "final Boss did not show up when reached");
+  /* v1.12 射击系统断言 */
+  check(result.bugs.shots && result.bugs.shots.miniHit, "milk shots did not hurt the mini boss");
+  check(result.bugs.shots && result.bugs.shots.bossDeflectOK, "boss shield did not deflect shots");
+  check(result.bugs.shots && result.bugs.shots.bossVulnHit, "shots did not hurt the vulnerable boss");
   /* v1.9+ 趣味性功能断言 */
   check(
-    result.fun && result.fun.eggsPerLevel.length === 20 && result.fun.eggsPerLevel.every((n) => n === 1),
+    result.fun && result.fun.eggsPerLevel.length === 32 && result.fun.eggsPerLevel.every((n) => n === 1),
     "each level should contain exactly 1 golden egg",
   );
   check(result.fun?.poundBrick?.broken, "ground pound failed to break a brick");
@@ -618,7 +651,7 @@ try {
       JSON.stringify(failedSmoke.map((r) => ({ n: r.name, cur: r.currentTile, max: r.maxTile, d: r.deaths }))),
     );
   console.log(
-    `Edge E2E: levels ${result.levels.length}/20, bot-clearable ${result.routes.filter((route) => route.passed).length}/20, boss ${result.bugs.bossTriggered ? "OK" : "MISSING"}`,
+    `Edge E2E: levels ${result.levels.length}/32, bot-clearable ${result.routes.filter((route) => route.passed).length}/${result.routes.length}, boss ${result.bugs.bossTriggered ? "OK" : "MISSING"}`,
   );
   console.log("VIEW:", JSON.stringify(result.bugs.view), "BOSSTRACE:", JSON.stringify(result.bugs.bossTrace));
   if (failures.length) throw new Error(`E2E failures:\n- ${failures.join("\n- ")}`);

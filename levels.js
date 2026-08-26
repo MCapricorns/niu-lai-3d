@@ -1011,22 +1011,580 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     g.flag(121); /* 112..120 平坦 Boss 坪台 */
   });
 
-  defLevel(104, "5-4 Anthropic 机房", 4, function (g) {
-    g.ground(0, 103);
-    g.startX = 6;
-    g.solid(4, 0, 14);
-    g.solid(99, 0, 14); /* 机房竞技场:两侧服务器墙 */
-    g.coinRow(10, 9, 4);
-    g.q(16, 8, 5); /* 决战前的奶 */
-    g.q(14, 9, 3); /* 铃铛箱:起跳从箱底顶开 */
-    g.egg(16, 7); /* 热身蛋:跳上奶箱摸一把 */
-    g.plat(30, 9, 3); /* 左服务机架:躲冲击波 */
-    g.plat(46, 7, 3);
-    g.plat(70, 9, 3);
-    g.plat(84, 7, 3);
-    g.coinRow(46, 6, 3);
-    g.coinRow(84, 6, 3);
-    g.q(60, 8, 2);
+  /* ================= 世界6 · 星云霓虹:大模型第二梯队登场 ================= */
+
+  defLevel(124, "6-1 吉米你双子谷", 5, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 4);
+    g.pit(13, 18);
+    g.mplat(14, 11, 17, 8);
+    g.coinRow(14, 7, 3);
+    g.wolf(23);
+    g.mesa(27, 29, 9);
+    g.pit(30, 33);
+    g.mesa(34, 36, 8);
+    g.coinRow(27, 8, 3);
+    g.coin(34, 7);
+    g.leopard(41);
+    g.spike(45, 3);
+    g.plat(45, 9, 3);
+    g.coinRow(45, 8, 3);
+    g.cannon(52);
+    g.spring(58);
+    g.plat(56, 5, 4);
+    g.coinRow(56, 4, 4);
+    g.q(59, 4, 2);
+    /* 双子井:下井摘蛋,蹬墙出井(1-2 同款) */
+    g.pit(65, 75);
+    g.ground(69, 73);
+    g.mesa(69, 69, 5);
+    g.mesa(73, 73, 3);
+    g.plat(66, 8, 2);
+    g.plat(68, 6, 1);
+    g.plat(75, 2, 1);
+    g.plat(76, 4, 2);
+    g.coin(75, 1);
+    g.coin(76, 1);
+    g.egg(72, 8);
+    g.raven(79, 7);
+    g.wolf(84);
+    g.leopard(88);
+    g.pit(93, 97);
+    g.coinArc(94, 9);
+    g.bird(101, 6);
+    g.raven(105, 7);
+    g.coinRow(112, 11, 3);
+    g.flag(118); /* 106..118 平坦 Boss 坪台 */
+  });
+
+  defLevel(128, "6-2 密斯特拉风谷", 5, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 3);
+    g.cannon(13);
+    g.cannon(16);
+    g.wolf(20);
+    g.pit(25, 33);
+    g.mplat(26, 10, 32, 10);
+    g.coinRow(27, 7, 4);
+    g.leopard(38);
+    g.pit(42, 47);
+    g.cr(43, 4);
+    g.coinRow(43, 9, 4);
+    g.raven(51, 6);
+    g.raven(55, 8);
+    g.spike(60, 4);
+    g.plat(60, 9, 4);
+    g.pipe(66, 4);
+    g.cannon(66, 7.25);
+    g.pipe(70, 2);
+    g.spring(76);
+    g.plat(74, 5, 4);
+    g.coinRow(74, 4, 4);
+    g.q(77, 4, 6);
+    /* 风蚀井:下井摘蛋,蹬墙出井 */
+    g.pit(80, 90);
+    g.ground(84, 88);
+    g.mesa(84, 84, 5);
+    g.mesa(88, 88, 3);
+    g.plat(81, 8, 2);
+    g.plat(83, 6, 1);
+    g.plat(90, 2, 1);
+    g.plat(91, 4, 2);
+    g.coin(90, 1);
+    g.coin(91, 1);
+    g.egg(87, 8);
+    g.leopard(95);
+    g.wolf(98);
+    g.cannon(103);
+    g.spike(104, 3);
+    g.coinRow(112, 11, 3);
+    g.flag(121); /* 107..121 平坦 Boss 坪台 */
+  });
+
+  defLevel(130, "6-3 弗拉克斯闪电站", 5, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 4);
+    g.spike(13, 3);
+    g.plat(13, 9, 3);
+    g.coinRow(13, 8, 3);
+    g.pit(18, 24);
+    g.cr(19, 5);
+    g.coinRow(19, 9, 5);
+    g.wolf(29);
+    g.leopard(33);
+    g.mesa(37, 39, 9);
+    g.pit(40, 43);
+    g.mesa(44, 46, 8);
+    g.coinRow(37, 8, 3);
+    g.cannon(50);
+    g.bigc(52, 9);
+    g.cannon(54);
+    g.raven(58, 6);
+    g.raven(62, 8);
+    g.spring(67);
+    g.plat(65, 4, 4);
+    g.coinRow(65, 3, 4);
+    g.q(68, 3, 3);
+    /* 闪电站地窖:坐地重击开盖 */
+    g.cellar(73, 76);
+    g.coin(74, 12);
+    g.coin(75, 13);
+    g.egg(74, 13);
+    g.wolf(81);
+    g.leopard(84);
+    g.pit(89, 95);
+    g.cr(90, 5);
+    g.raven(92, 7);
+    g.spike(100, 4);
+    g.plat(100, 9, 4);
+    g.pit(106, 109);
+    g.coinArc(107, 9);
+    g.solid(113, 9, 11);
+    g.solid(117, 9, 11);
+    g.brick(113, 8, 5);
+    g.q(115, 8, 1);
+    g.coinRow(121, 11, 3);
+    g.flag(125); /* 118..130 平坦 Boss 坪台 */
+  });
+
+  defLevel(126, "6-4 苏诺回音谷", 5, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 4);
+    g.spring(14);
+    g.plat(12, 5, 4);
+    g.coinRow(12, 4, 4);
+    g.bigc(15, 3);
+    g.wolf(21);
+    g.leopard(25);
+    g.pit(30, 36);
+    g.mplat(31, 10, 35, 7);
+    g.coinRow(32, 5, 3);
+    g.mesa(40, 42, 9);
+    g.pit(43, 46);
+    g.mesa(47, 49, 10);
+    g.coinRow(40, 8, 3);
+    g.bird(52, 6);
+    g.pipe(56, 3);
+    g.pipe(60, 2);
+    g.wolf(64);
+    g.spike(68, 3);
+    g.plat(68, 9, 3);
+    g.spring(74);
+    g.plat(72, 5, 4);
+    g.coinRow(72, 4, 4);
+    g.q(75, 4, 2);
+    /* 回音井:下井摘蛋,蹬墙出井 */
+    g.pit(76, 86);
+    g.ground(80, 84);
+    g.mesa(80, 80, 5);
+    g.mesa(84, 84, 3);
+    g.plat(77, 8, 2);
+    g.plat(79, 6, 1);
+    g.plat(86, 2, 1);
+    g.plat(87, 4, 2);
+    g.coin(86, 1);
+    g.coin(87, 1);
+    g.egg(83, 8);
+    g.raven(89, 7);
+    g.leopard(92);
+    g.wolf(95);
+    g.pit(100, 104);
+    g.cr(101, 3);
+    g.coinRow(101, 9, 3);
+    g.cannon(107);
+    g.coinRow(112, 11, 3);
+    g.flag(118); /* 105..118 平坦 Boss 坪台 */
+  });
+
+  /* ================= 世界7 · 抱抱脸乐园:开源社区大乱斗 ================= */
+
+  defLevel(122, "7-1 抱抱脸游乐园", 6, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 4);
+    g.pipe(14, 2);
+    g.pipe(18, 3);
+    g.wolf(23);
+    g.pipe(27, 4);
+    g.leopard(31);
+    g.brick(35, 6, 6);
+    g.q(37, 6, 4);
+    g.wolf(38);
+    g.pit(44, 48);
+    g.plat(45, 9, 3);
+    g.coinRow(45, 8, 3);
+    g.spring(53);
+    g.plat(51, 5, 4);
+    g.coinRow(51, 4, 4);
+    g.q(54, 4, 6);
+    g.raven(58, 6);
+    g.raven(62, 8);
+    /* 拥抱地窖:坐地重击开盖 */
+    g.cellar(66, 69);
+    g.coin(67, 12);
+    g.coin(68, 13);
+    g.egg(67, 13);
+    g.wolf(74);
+    g.leopard(78);
+    g.pit(83, 89);
+    g.mplat(84, 10, 88, 10);
+    g.coinRow(85, 7, 4);
+    g.spike(94, 3);
+    g.plat(94, 9, 3);
+    g.mesa(99, 101, 9);
+    g.coinRow(99, 8, 3);
+    g.pit(103, 105);
+    g.coinArc(104, 9);
+    g.coinRow(110, 11, 3);
+    g.flag(116); /* 106..116 平坦 Boss 坪台 */
+  });
+
+  defLevel(126, "7-2 皮卡闪电原", 6, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 4);
+    g.spike(13, 4);
+    g.plat(13, 9, 4);
+    g.coinRow(13, 8, 4);
+    g.wolf(20);
+    g.leopard(24);
+    g.pit(29, 35);
+    g.cr(30, 5);
+    g.coinRow(30, 9, 5);
+    g.raven(38, 6);
+    g.raven(42, 7);
+    g.spring(47);
+    g.plat(45, 5, 4);
+    g.coinRow(45, 4, 4);
+    g.q(48, 4, 2);
+    g.cannon(53);
+    g.mesa(58, 60, 10);
+    g.pit(61, 64);
+    g.mesa(65, 67, 9);
+    g.coinRow(58, 9, 3);
+    g.coin(65, 8);
+    /* 雷光井:下井摘蛋,蹬墙出井 */
+    g.pit(78, 88);
+    g.ground(82, 86);
+    g.mesa(82, 82, 5);
+    g.mesa(86, 86, 3);
+    g.plat(79, 8, 2);
+    g.plat(81, 6, 1);
+    g.plat(88, 2, 1);
+    g.plat(89, 4, 2);
+    g.coin(88, 1);
+    g.coin(89, 1);
+    g.egg(85, 8);
+    g.raven(92, 7);
+    g.leopard(96);
+    g.wolf(99);
+    g.wolf(102);
+    g.spike(108, 3);
+    g.plat(108, 9, 3);
+    g.coinRow(116, 11, 3);
+    g.flag(121); /* 111..126 平坦 Boss 坪台 */
+  });
+
+  defLevel(124, "7-3 扣子流水线", 6, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 4);
+    g.pit(13, 19);
+    g.mplat(14, 10, 18, 10);
+    g.coinRow(15, 7, 4);
+    g.pit(22, 29);
+    g.mplat(23, 10, 28, 7);
+    g.coinRow(24, 5, 3);
+    g.leopard(33);
+    g.wolf(36);
+    g.pit(40, 45);
+    g.cr(41, 4);
+    g.coinRow(41, 9, 4);
+    g.cannon(50);
+    g.cannon(53);
+    g.spring(59);
+    g.plat(57, 5, 4);
+    g.coinRow(57, 4, 4);
+    g.q(60, 4, 3);
+    g.bird(65, 6);
+    g.raven(70, 7);
+    g.wolf(74);
+    g.leopard(78);
+    g.spike(82, 3);
+    g.plat(82, 9, 3);
+    /* 流水线井:下井摘蛋,蹬墙出井 */
+    g.pit(88, 98);
+    g.ground(92, 96);
+    g.mesa(92, 92, 5);
+    g.mesa(96, 96, 3);
+    g.plat(89, 8, 2);
+    g.plat(91, 6, 1);
+    g.plat(98, 2, 1);
+    g.plat(99, 4, 2);
+    g.coin(98, 1);
+    g.coin(99, 1);
+    g.egg(95, 8);
+    g.leopard(104);
+    g.pit(108, 110);
+    g.coinArc(109, 9);
+    g.coinRow(116, 11, 3);
+    g.flag(121); /* 111..124 平坦 Boss 坪台 */
+  });
+
+  defLevel(124, "7-4 卡索代码塔", 6, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 3);
+    /* 代码阶梯:逐级蹬跳上塔 */
+    g.plat(14, 10, 2);
+    g.plat(18, 8, 2);
+    g.plat(22, 6, 2);
+    g.coinRow(14, 9, 2);
+    g.coinRow(22, 5, 2);
+    g.q(23, 5, 2);
+    g.mesa(28, 31, 7);
+    g.coin(29, 6);
+    g.coin(30, 6);
+    g.pit(32, 36);
+    g.mplat(33, 6, 36, 9);
+    g.coinRow(33, 5, 3);
+    g.leopard(41);
+    g.wolf(44);
+    g.brick(48, 8, 6);
+    g.q(50, 8, 4);
+    g.q(53, 8, 6);
+    g.spike(60, 3);
+    g.plat(60, 9, 3);
+    g.spring(66);
+    g.plat(64, 5, 4);
+    g.coinRow(64, 4, 4);
+    /* 代码井:下井摘蛋,蹬墙出井 */
+    g.pit(76, 86);
+    g.ground(80, 84);
+    g.mesa(80, 80, 5);
+    g.mesa(84, 84, 3);
+    g.plat(77, 8, 2);
+    g.plat(79, 6, 1);
+    g.plat(86, 2, 1);
+    g.plat(87, 4, 2);
+    g.coin(86, 1);
+    g.coin(87, 1);
+    g.egg(83, 8);
+    g.raven(90, 7);
+    g.leopard(93);
+    g.wolf(96);
+    g.mesa(101, 103, 9);
+    g.coinRow(101, 8, 3);
+    g.coinRow(110, 11, 3);
+    g.flag(117); /* 104..117 平坦 Boss 坪台 */
+  });
+
+  /* ================= 世界8 · 炼丹星火山:算力军备竞赛 ================= */
+
+  defLevel(126, "8-1 星火炼丹炉", 7, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 3);
+    g.lava(13, 4);
+    g.coinArc(13, 9);
+    g.lava(19, 3);
+    g.wolf(24);
+    g.lava(28, 5);
+    g.mesa(30, 31, 11);
+    g.coin(30, 10);
+    g.spring(37);
+    g.lava(38, 5);
+    g.coinArc(39, 6);
+    g.leopard(45);
+    g.cannon(50);
+    g.cannon(54);
+    g.lava(58, 6);
+    g.plat(59, 9, 4);
+    g.coinRow(59, 8, 4);
+    g.raven(66, 6);
+    g.mesa(70, 72, 9);
+    g.pit(73, 76);
+    g.mesa(77, 79, 10);
+    g.coinRow(70, 8, 3);
+    /* 炼丹地窖:坐地重击开盖 */
+    g.cellar(84, 87);
+    g.coin(85, 12);
+    g.coin(86, 13);
+    g.egg(85, 13);
+    g.lava(92, 4);
+    g.cr(92, 3, 11);
+    g.wolf(100);
+    g.leopard(103);
+    g.lava(107, 4);
+    g.coinArc(108, 9);
+    g.coinRow(114, 11, 3);
+    g.flag(120); /* 111..126 平坦 Boss 坪台 */
+  });
+
+  defLevel(124, "8-2 天工云阶", 7, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 4);
+    g.plat(13, 10, 2);
+    g.plat(17, 9, 2);
+    g.plat(21, 8, 2);
+    g.coinRow(13, 9, 2);
+    g.coinRow(21, 7, 2);
+    g.q(22, 7, 6);
+    g.wolf(27);
+    g.raven(30, 6);
+    g.raven(34, 8);
+    g.pit(38, 44);
+    g.mplat(39, 10, 43, 8);
+    g.coinRow(40, 6, 3);
+    g.mesa(48, 50, 9);
+    g.pit(51, 54);
+    g.mesa(55, 57, 8);
+    g.coin(48, 8);
+    g.coin(55, 7);
+    g.spring(62);
+    g.plat(60, 5, 4);
+    g.coinRow(60, 4, 4);
+    g.q(63, 4, 3);
+    g.leopard(68);
+    g.cannon(72);
+    g.spike(76, 3);
+    g.plat(76, 9, 3);
+    g.raven(83, 6);
+    g.cannon(86);
+    /* 天工井:下井摘蛋,蹬墙出井 */
+    g.pit(90, 100);
+    g.ground(94, 98);
+    g.mesa(94, 94, 5);
+    g.mesa(98, 98, 3);
+    g.plat(91, 8, 2);
+    g.plat(93, 6, 1);
+    g.plat(100, 2, 1);
+    g.plat(101, 4, 2);
+    g.coin(100, 1);
+    g.coin(101, 1);
+    g.egg(97, 8);
+    g.leopard(105);
+    g.coinRow(114, 11, 3);
+    g.flag(119); /* 105..119 平坦 Boss 坪台 */
+  });
+
+  defLevel(128, "8-3 秘塔书阵", 7, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 9, 4);
+    /* 书阵A:双层砖阵,核心藏正中 */
+    g.brick(15, 8, 3);
+    g.q(16, 8, 4);
+    g.brick(20, 8, 3);
+    g.brick(15, 5, 3);
+    g.q(16, 5, 2);
+    g.brick(20, 5, 3);
+    g.wolf(26);
+    g.spike(31, 2);
+    g.plat(31, 9, 2);
+    g.spike(35, 2);
+    g.plat(35, 9, 2);
+    g.raven(41, 6);
+    g.raven(45, 8);
+    /* 书阵B:双层弹箱墙 */
+    g.brick(51, 8, 2);
+    g.q(53, 8, 1);
+    g.brick(55, 8, 2);
+    g.brick(51, 5, 6);
+    g.q(54, 5, 7);
+    g.leopard(61);
+    g.pit(65, 70);
+    g.plat(66, 9, 2);
+    g.plat(69, 9, 1);
+    g.coinArc(66, 8);
+    g.cannon(75);
+    g.wolf(78);
+    g.cannon(81);
+    g.pit(86, 91);
+    g.cr(87, 4);
+    g.coinRow(87, 10, 3);
+    /* 书阵地窖:坐地重击开盖 */
+    g.cellar(95, 99);
+    g.coin(96, 12);
+    g.coin(98, 12);
+    g.coin(97, 13);
+    g.egg(97, 13);
+    g.spring(104);
+    g.plat(102, 5, 4);
+    g.coinRow(102, 4, 4);
+    g.bigc(105, 3);
+    g.spike(110, 3);
+    g.plat(110, 9, 3);
+    g.raven(114, 6);
+    g.coinRow(118, 11, 3);
+    g.flag(123); /* 113..128 平坦 Boss 坪台 */
+  });
+
+  defLevel(130, "8-4 恩伟达熔芯道", 7, function (g) {
+    g.startX = 3;
+    g.groundAll();
+    g.coinRow(8, 10, 4);
+    g.lava(13, 5);
+    g.coinArc(15, 8);
+    g.wolf(23);
+    g.lava(27, 5);
+    g.mesa(33, 34, 11);
+    g.lava(35, 4);
+    g.coin(33, 10);
+    g.cannon(41);
+    g.cannon(45);
+    g.lava(49, 6);
+    g.plat(50, 9, 4);
+    g.coinRow(50, 8, 4);
+    g.raven(56, 6);
+    g.raven(60, 7);
+    g.spring(65);
+    g.lava(66, 6);
+    g.coinArc(67, 5);
+    g.leopard(74);
+    g.wolf(77);
+    g.lava(81, 5);
+    g.mplat(81, 10, 84, 8);
+    g.coinRow(82, 7, 3);
+    /* 熔芯井:底下岩浆,下井捞蛋蹬墙逃命(4-1 同款) */
+    g.mesa(88, 88, 5);
+    g.mesa(92, 92, 4);
+    g.lava(89, 3);
+    g.plat(86, 8, 1);
+    g.egg(90, 8);
+    g.coin(90, 10);
+    g.leopard(97);
+    g.cannon(101);
+    g.lava(105, 9);
+    g.cr(106, 7);
+    g.coinRow(106, 9, 7);
+    g.solid(116, 9, 11);
+    g.solid(118, 9, 11);
+    g.brick(116, 8, 3);
+    g.q(117, 8, 1);
+    g.wolf(122);
+    g.coinRow(125, 11, 3);
+    g.flag(127); /* 114..130 平坦 Boss 坪台 */
+  });
+
+  /* ================= 终章 · Anthropic 机房:紧凑竞技场决战 ================= */
+
+  defLevel(34, "终章 Anthropic 机房", 4, function (g) {
+    g.ground(0, 33);
+    g.startX = 3;
+    g.solid(0, 0, 14);
+    g.solid(33, 0, 14); /* 机房竞技场:紧凑围墙 */
+    g.plat(5, 9, 4);
+    g.plat(24, 9, 4);
+    g.plat(14, 5, 6);
+    g.coinRow(14, 3, 6);
+    g.q(17, 4, 5); /* 决战前的奶 */
+    g.egg(14, 4); /* 热身蛋 */
     g.flagX = -1; /* 不设旗:打倒 Anthropic Dario 即通关 */
   });
 

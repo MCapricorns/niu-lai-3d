@@ -12,7 +12,7 @@ var W = 960,
   TAU = Math.PI * 2;
 var START_LIVES = 9;
 var FONT = '"ZCOOL KuaiLe","Microsoft YaHei",sans-serif';
-var VER = "v1.10.0";
+var VER = "v1.12.0";
 var GH = { x: -1, y: -1, w: 0, h: 0 }; /* 作者GitHub徽章热区 */
 var CLR = { x: -1, y: -1, w: 0, h: 0 }; /* 选关页"清空成绩"按钮热区 */
 function clamp(v, a, b) {
@@ -482,7 +482,7 @@ function noise2(d, vol, fp, when) {
 }
 
 /* ---------------- 输入 ---------------- */
-var keys = { left: false, right: false, run: false, jump: false };
+var keys = { left: false, right: false, run: false, jump: false, shoot: false };
 var keyMap = {
   ArrowLeft: "left",
   KeyA: "left",
@@ -497,6 +497,8 @@ var keyMap = {
   KeyZ: "jump",
   ArrowDown: "pound",
   KeyS: "pound",
+  KeyJ: "shoot",
+  KeyF: "shoot",
 };
 var justPressed = {};
 function resetKeys() {
@@ -504,6 +506,7 @@ function resetKeys() {
   keys.right = false;
   keys.run = false;
   keys.jump = false;
+  keys.shoot = false;
   justPressed = {};
 }
 window.addEventListener("keydown", function (e) {
@@ -627,6 +630,7 @@ if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
   bindTouch("btnJ", "jump", true);
   bindTouch("btnB", "run");
   bindTouch("btnP", "pound", true);
+  bindTouch("btnS", "shoot");
 }
 
 /* ---------------- 特效 ---------------- */
@@ -684,6 +688,7 @@ function updateFX(dt) {
 
 /* ---------- 关卡配置（见 levels.js） ---------- */
 var LEVELS = window.createNiuLaiLevels(TAU);
+var FINAL_LV = LEVELS.length - 1; /* 终章决战关(Anthropic 机房) */
 
 /* ============ 全局状态 ============ */
 var GS = {
@@ -725,7 +730,7 @@ function isUnlocked(i) {
 }
 function markCleared(i) {
   try {
-    var s = (localStorage.getItem("niu_clear") || "").padEnd(20, "0");
+    var s = (localStorage.getItem("niu_clear") || "").padEnd(64, "0");
     if (s.charCodeAt(i) === 49) return;
     s = s.slice(0, i) + "1" + s.slice(i + 1);
     localStorage.setItem("niu_clear", s);
@@ -742,7 +747,7 @@ function isEggGot(i) {
 }
 function markEgg(i) {
   try {
-    var s = (localStorage.getItem("niu_eggs") || "").padEnd(20, "0");
+    var s = (localStorage.getItem("niu_eggs") || "").padEnd(64, "0");
     if (s.charCodeAt(i) === 49) return false;
     s = s.slice(0, i) + "1" + s.slice(i + 1);
     localStorage.setItem("niu_eggs", s);
@@ -768,7 +773,7 @@ function eggFullBadge() {
 }
 try {
   if (localStorage.getItem("niu_ver") !== "2") {
-    for (var _mi = 0; _mi < 32; _mi++) localStorage.removeItem("niu_best_lv" + _mi);
+    for (var _mi = 0; _mi < 64; _mi++) localStorage.removeItem("niu_best_lv" + _mi);
     localStorage.removeItem("niu_best");
     localStorage.removeItem("niu_clear");
     localStorage.setItem("niu_ver", "2");
@@ -785,6 +790,7 @@ var curLV = null,
   itms = [],
   bumps = [],
   fires = [],
+  shots = [],
   crumbles = {};
 var serverSmokeClock = 0;
 var camX = 0;
@@ -807,6 +813,7 @@ var PL = {
   prevY: 0,
   squash: 0,
   springK: 0,
+  shotCd: 0,
 };
 function solid(c) {
   return (
@@ -867,7 +874,7 @@ function findBossSpot(tx, fromRight) {
 function spawnMiniBoss(tx) {
   var world = Math.floor(GS.li / 4) + 1;
   var hp = world >= 5 ? 4 : world >= 3 ? 3 : 2;
-  var style = ["chase", "hopper", "charger", "lobber", "berserk"][Math.min(world, 5) - 1];
+  var style = ["chase", "hopper", "charger", "lobber", "berserk"][world <= 5 ? world - 1 : (world - 6) % 5];
   var spot = findBossSpot(tx) || findBossSpot(curLV.w - 12) || null;
   if (!spot) spot = { x: Math.max(6, Math.min(curLV.startX + 6, curLV.w - 10)), y: 12 };
   var sx = spot.x,
@@ -915,6 +922,7 @@ function loadLevel(i, fresh) {
   itms = [];
   bumps = [];
   fires = [];
+  shots = [];
   crumbles = {};
   serverSmokeClock = 0;
   GS.combo = 0;
@@ -1000,7 +1008,7 @@ function loadLevel(i, fresh) {
   GS.bossActive = false;
   GS.boss = null;
   camX = clamp(PL.x - W * 0.4, 0, curLV.w * T - W);
-  musicStart(curLV.theme);
+  musicStart(curLV.theme % PATS.length);
   if (typeof makeSky === "function") makeSky();
   buildWorld3D();
   popText(PL.x + 14, PL.y - 40, curLV.name, "#ffe08a");
@@ -1341,6 +1349,9 @@ function updatePlayer(dt) {
       popText(p.x + 14, p.y - 16, "坐地重击!", "#ff9a3f");
     }
   }
+  /* 奶弹射击:按住连发,冷却限制 */
+  p.shotCd = Math.max(0, (p.shotCd || 0) - dt);
+  if (keys.shoot && p.shotCd <= 0 && !p.dead) fireShot();
   /* 马里奥式重力:按住=飘,松开=截断;下落更重 */
   var grav = p.vy < 0 ? (keys.jump ? 1250 : 3300) : 2250;
   p.vy += grav * dt;
@@ -1547,7 +1558,7 @@ function updatePlayer(dt) {
   ) {
     startClear();
   }
-  if (GS.li === 19 && !GS.bossActive && !GS.boss && p.x > 24 * T) {
+  if (GS.li === FINAL_LV && !GS.bossActive && !GS.boss && p.x > 6 * T) {
     startBossIntro();
   }
   updateCheckpoint();
@@ -1809,13 +1820,13 @@ function updateCrumbles(dt) {
   }
 }
 function updateServerSmoke(dt) {
-  if (GS.li !== 19 || !GS.boss) return;
+  if (GS.li !== FINAL_LV || !GS.boss) return;
   if (GS.state !== "bossintro" && GS.state !== "play" && GS.state !== "winseq") return;
   serverSmokeClock -= dt;
   var interval = GS.state === "winseq" ? 0.045 : 0.2;
   while (serverSmokeClock <= 0) {
     serverSmokeClock += interval;
-    var sx = clamp(PL.x + rnd(-320, 560), 6 * T, 94 * T);
+    var sx = clamp(PL.x + rnd(-320, 560), 3 * T, 31 * T);
     var sy = rnd(210, 410);
     part({
       x: sx,
@@ -2347,7 +2358,29 @@ function overlap(ax, ay, aw, ah, bx, by, bw, bh) {
   return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
 
-/* ============ Final Boss: Anthropic Dario ============ */
+/* ============ Final Boss: Anthropic Dario(紧凑竞技场 · 闪避+射击) ============
+   循环:预警(红闪+音效) → 攻击(光束/弹幕/冲撞/砸地) → 护盾解除(金光,可输出)
+   躲避攻击 = 生存;抓住护盾解除窗口 = 奶弹(J)或踩头输出 */
+function bossVulnerable(b) {
+  return b.state === "recover" || b.state === "stun";
+}
+function bossDamage(b, n, how) {
+  if (b.hurt > 0 || b.dead) return;
+  b.hp -= n;
+  b.hurt = 0.5;
+  GS.score += 300;
+  GS.sKill += 300;
+  sBreak();
+  addShake(6);
+  freeze = 0.04;
+  burst(b.x + b.w / 2, b.y + 30, "spark", 10, 280);
+  if (b.hp <= 0) {
+    popText(b.x + b.w / 2, b.y - 16, "Anthropic Dario 崩了!!", "#ff5a5a");
+    defeatBoss();
+  } else {
+    popText(b.x + b.w / 2, b.y - 16, (how === "shot" ? "奶弹命中! " : "") + "HP:" + b.hp, "#ff5a5a");
+  }
+}
 function startBossIntro() {
   GS.bossActive = false;
   GS.bossIntro = 2.2;
@@ -2358,25 +2391,31 @@ function startBossIntro() {
   sNiuLai();
   addShake(14);
   flash = 0.7;
-  popText(86 * T + 55, 12 * T - 122, "Anthropic Dario:你的算力,归我了!!", "#ff2a9a");
+  popText(16 * T + 55, 12 * T - 130, "Anthropic Dario:你的算力,归我了!!", "#ff2a9a");
   GS.boss = {
-    x: 86 * T,
+    x: 16 * T,
     y: 12 * T - 84,
     w: 110,
     h: 84,
     vx: 0,
+    vy: 0,
     face: -1,
     state: "idle",
     t: 0,
-    hp: 6,
-    maxhp: 6,
-    stun: 0,
-    warn: 0,
+    hp: 12,
+    maxhp: 12,
     hurt: 0,
-    atk: 2.0,
+    atk: 1.2,
+    warn: 0,
+    rec: 0,
+    stun: 0,
+    next: "",
+    beamRow: 10,
+    beamT: 0,
+    slamVx: 0,
+    fired: false,
     dead: false,
     phase: 1,
-    thrown: false,
   };
   PL.big = true;
   PL.inv = Math.max(PL.inv, 1.5);
@@ -2388,96 +2427,98 @@ function updateBoss(dt) {
   if (!b) return;
   b.t += dt;
   b.hurt = Math.max(0, b.hurt - dt);
-  if (b.hp <= 2 && b.phase < 3) {
-    b.phase = 3;
-    popText(b.x + b.w / 2, b.y - 30, "Anthropic Dario:数据洪流!!", "#ff2a9a");
+  var ph = b.hp <= 4 ? 3 : b.hp <= 8 ? 2 : 1;
+  if (ph !== b.phase) {
+    b.phase = ph;
+    popText(b.x + b.w / 2, b.y - 30, ph === 3 ? "Dario:数据洪流!!" : "Dario:封你账号!!", "#ff2a9a");
     sWarn();
-    addShake(10);
-    flash = 0.7;
-  } else if (b.hp <= 4 && b.phase < 2) {
-    b.phase = 2;
-    popText(b.x + b.w / 2, b.y - 30, "Anthropic Dario:封你账号!!", "#c05aff");
-    sWarn();
-    addShake(8);
+    addShake(9);
     flash = 0.6;
   }
-  var dashSpd = b.phase === 3 ? 720 : b.phase === 2 ? 650 : 560;
-  var stunT = b.phase === 3 ? 2.2 : b.phase === 2 ? 2.6 : 3.2;
+  var L = 1.3 * T,
+    R = 32.7 * T - b.w;
+  var teleK = b.phase === 3 ? 0.78 : b.phase === 2 ? 0.9 : 1;
   if (b.state === "idle") {
     b.face = p.x > b.x ? 1 : -1;
-    b.x = clamp(b.x + b.face * (36 + b.phase * 24) * dt, 32 * T, 93 * T - b.w); /* 别走出竞技场 */
+    b.x = clamp(b.x + b.face * 46 * dt, L, R);
     b.atk -= dt;
     if (b.atk <= 0) {
       var roll = Math.random();
-      var slamP = b.phase === 3 ? 0.34 : b.phase === 2 ? 0.16 : 0;
-      if (roll < slamP) {
-        b.state = "slamJump";
-        b.vy = -1000;
-        b.slamVx = clamp((p.x - b.x) * 1.15, -540, 540);
-        sHowl();
-        addShake(4);
-      } else if (roll < slamP + (b.phase === 1 ? 0.52 : 0.44)) {
-        b.state = "throw";
-        b.warn = 0.6;
-        b.thrown = false;
-        sWarn();
-      } else {
-        b.state = "warn";
-        b.warn = b.phase === 1 ? 0.85 : 0.58;
-        sWarn();
-      }
-    }
-  } else if (b.state === "slamJump") {
-    /* 跃起砸向牛来位置:落地掀起双向冲击波,落地硬直=惩罚窗口 */
-    b.vy += 1500 * dt;
-    b.y += b.vy * dt;
-    b.x = clamp(b.x + b.slamVx * dt, 32 * T, 93 * T - b.w);
-    var gRow = Math.floor((b.y + b.h) / T),
-      gl2 = false;
-    var sx0 = Math.floor((b.x + 8) / T),
-      sx1 = Math.floor((b.x + b.w - 8) / T);
-    for (var sq2 = sx0; sq2 <= sx1; sq2++) {
-      if (solid(tileAt(sq2, gRow))) {
-        b.y = gRow * T - b.h - 0.01;
-        gl2 = true;
-        break;
-      }
-    }
-    if (gl2) {
-      addShake(14);
-      sBreak();
-      freeze = 0.07;
-      burst(b.x + b.w / 2, b.y + b.h, "shard", 12, 300);
-      var wYc = Math.floor((b.y + b.h + 4) / T) * T - 14;
-      fires.push({ x: b.x - 8, y: wYc, vx: -430, vy: 0, t: 0, wave: true });
-      fires.push({ x: b.x + b.w + 8, y: wYc, vx: 430, vy: 0, t: 0, wave: true });
-      b.state = "stun";
-      b.stun = 1.25;
-      b.vx = 0;
-      popText(b.x + b.w / 2, b.y - 18, "落地硬直!", "#ffd23f");
+      var beamP = 0.34,
+        fireP = 0.32,
+        dashP = b.phase === 1 ? 0.18 : 0.22;
+      if (roll < beamP) {
+        b.next = "beam";
+        b.beamRow = Math.random() < 0.5 ? 10 : 8;
+      } else if (roll < beamP + fireP) b.next = "fire";
+      else if (roll < beamP + fireP + dashP) b.next = "dash";
+      else b.next = "slam";
+      b.state = "warn";
+      b.warn = (b.next === "dash" ? 0.75 : 0.62) * teleK;
+      sWarn();
     }
   } else if (b.state === "warn") {
     b.warn -= dt;
-    if (Math.random() < 0.2) addShake(1);
+    if (Math.random() < 0.25) addShake(1);
+    if (Math.random() < 0.3)
+      part({
+        x: b.x + b.w / 2 + rnd(-40, 40),
+        y: b.y + rnd(0, b.h),
+        vx: rnd(-40, 40),
+        vy: rnd(-90, -20),
+        g: 0,
+        life: 0.25,
+        t: 0,
+        type: "spark",
+        size: 3,
+        col: b.next === "beam" ? "#8ad8ff" : "#ff5a5a",
+      });
     if (b.warn <= 0) {
-      b.state = "dash";
-      b.face = p.x > b.x ? 1 : -1;
-      b.vx = b.face * dashSpd;
-      sHowl();
+      if (b.next === "beam") {
+        b.state = "beam";
+        b.beamT = 0.95 + (b.phase - 1) * 0.12;
+        sFire();
+        addShake(6);
+      } else if (b.next === "fire") {
+        b.state = "fire";
+        b.warn = 0.5;
+        b.fired = false;
+      } else if (b.next === "dash") {
+        b.state = "dash";
+        b.face = p.x > b.x ? 1 : -1;
+        b.vx = b.face * (b.phase === 3 ? 660 : b.phase === 2 ? 570 : 480);
+        sHowl();
+      } else {
+        b.state = "slamJump";
+        b.vy = -1050;
+        b.slamVx = clamp((p.x - b.x) * 1.2, -460, 460);
+        sHowl();
+        addShake(4);
+      }
     }
-  } else if (b.state === "throw") {
+  } else if (b.state === "beam") {
+    b.beamT -= dt;
+    /* 光束覆盖 beamRow..beamRow+1 两行:低位躲平台,高位贴地面 */
+    if (!p.dead && overlap(1 * T, b.beamRow * T + 6, 32 * T, 2 * T - 12, p.x + 3, p.y + 3, p.w - 6, p.h - 6))
+      damagePlayer();
+    if (b.beamT <= 0) {
+      b.state = "recover";
+      b.rec = b.phase === 3 ? 2.1 : 1.8;
+      popText(b.x + b.w / 2, b.y - 24, "护盾解除——快攻!", "#ffd23f");
+    }
+  } else if (b.state === "fire") {
     b.warn -= dt;
-    if (!b.thrown && b.warn < 0.3) {
-      b.thrown = true;
-      var nFb = b.phase === 3 ? 4 : b.phase === 2 ? 3 : 2;
-      for (var fi = 0; fi < nFb; fi++) {
-        var ft2 = rnd(0.7, 0.95);
-        var sx2 = b.x + b.w / 2 + b.face * 36,
-          sy2 = b.y + 20 + fi * 7;
+    if (!b.fired && b.warn < 0.35) {
+      b.fired = true;
+      var n = b.phase + 2;
+      for (var fi = 0; fi < n; fi++) {
+        var ft2 = rnd(0.75, 1.0);
+        var sx2 = b.x + b.w / 2 + b.face * 30,
+          sy2 = b.y + 24;
         fires.push({
           x: sx2,
           y: sy2,
-          vx: (p.x + p.w / 2 - sx2) / ft2 + (fi - (nFb - 1) / 2) * 55,
+          vx: (p.x + p.w / 2 - sx2) / ft2 + (fi - (n - 1) / 2) * 70,
           vy: (p.y - sy2 - 490 * ft2 * ft2) / ft2,
           t: 0,
         });
@@ -2486,33 +2527,53 @@ function updateBoss(dt) {
       addShake(3);
     }
     if (b.warn <= 0) {
-      b.state = "idle";
-      b.atk = rnd(b.phase === 3 ? 0.9 : b.phase === 2 ? 1.3 : 2.2, b.phase === 3 ? 1.7 : b.phase === 2 ? 2.1 : 3.4);
+      b.state = "recover";
+      b.rec = b.phase === 3 ? 2.0 : 1.7;
+      popText(b.x + b.w / 2, b.y - 24, "护盾解除——快攻!", "#ffd23f");
     }
   } else if (b.state === "dash") {
     b.x += b.vx * dt;
-    var left = Math.floor(b.x / T),
-      right = Math.floor((b.x + b.w) / T);
-    var midty = Math.floor((b.y + b.h / 2) / T);
-    var nailed = false;
-    if (b.vx > 0 && solid(tileAt(right, midty))) {
-      b.x = right * T - b.w - 2;
-      nailed = true;
-    } else if (b.vx < 0 && solid(tileAt(left, midty))) {
-      b.x = (left + 1) * T + 2;
-      nailed = true;
-    } else if (b.x < 2 * T || b.x > (curLV.w - 2) * T - b.w) {
-      nailed = true;
-    }
-    if (nailed) {
+    if (Math.random() < 0.5)
+      part({
+        x: b.x + b.w / 2,
+        y: b.y + b.h - rnd(0, 30),
+        vx: -b.face * rnd(60, 160),
+        vy: rnd(-40, 0),
+        g: 0,
+        life: 0.25,
+        t: 0,
+        type: "dust",
+        size: 4,
+        col: "rgba(255,220,150,0.8)",
+      });
+    if (b.x <= L || b.x >= R) {
+      b.x = clamp(b.x, L, R);
       addShake(12);
       sBreak();
-      freeze = 0.08;
+      freeze = 0.06;
+      burst(b.x + b.w / 2 + (b.face * b.w) / 2, b.y + b.h / 2, "shard", 12, 280);
       b.state = "stun";
-      b.stun = stunT;
+      b.stun = b.phase === 3 ? 1.5 : b.phase === 2 ? 1.7 : 1.9;
       b.vx = 0;
-      burst(b.x + b.w / 2, b.y + b.h / 2, "shard", 10, 260);
-      popText(b.x + b.w / 2, b.y - 18, "撞晕了——快攻!", "#ffd23f");
+      popText(b.x + b.w / 2, b.y - 18, "撞墙眩晕——输出!", "#ffd23f");
+    }
+  } else if (b.state === "slamJump") {
+    b.vy += 1500 * dt;
+    b.y += b.vy * dt;
+    b.x = clamp(b.x + b.slamVx * dt, L, R);
+    if (b.vy > 0 && b.y + b.h >= 12 * T) {
+      b.y = 12 * T - b.h - 0.01;
+      b.vy = 0;
+      addShake(13);
+      sBreak();
+      freeze = 0.06;
+      burst(b.x + b.w / 2, b.y + b.h, "shard", 12, 300);
+      var wYc = 12 * T - 14;
+      fires.push({ x: b.x - 8, y: wYc, vx: -430, vy: 0, t: 0, wave: true });
+      fires.push({ x: b.x + b.w + 8, y: wYc, vx: 430, vy: 0, t: 0, wave: true });
+      b.state = "stun";
+      b.stun = 1.3;
+      popText(b.x + b.w / 2, b.y - 18, "落地硬直——输出!", "#ffd23f");
     }
   } else if (b.state === "stun") {
     b.stun -= dt;
@@ -2530,77 +2591,122 @@ function updateBoss(dt) {
         col: "#ffe08a",
       });
     if (b.stun <= 0) {
+      b.state = "recover";
+      b.rec = 1.2;
+    }
+  } else if (b.state === "recover") {
+    b.rec -= dt;
+    if (b.rec <= 0) {
       b.state = "idle";
-      b.atk = rnd(0.8, 1.8);
+      b.atk = rnd(b.phase === 3 ? 0.7 : 1.0, b.phase === 3 ? 1.1 : 1.5);
     }
   }
+  /* 接触判定:眩晕=任意接触都算输出;解除窗口=踩头/冲撞可打;其余=受伤 */
   if (!b.dead && !p.dead && GS.state === "play") {
-    var ov = overlap(b.x + 6, b.y + 4, b.w - 12, b.h - 8, p.x + 4, p.y + 3, p.w - 8, p.h - 3);
-    if (ov) {
-      {
-        var stomping = (p.vy > 0 && p.y + p.h - 8 < b.y + b.h * 0.55) || p.pounding;
-        if (b.state === "stun") {
-          /* 硬直窗口:任何方式接触都能重创 */
-          if (stomping) p.vy = keys.jump ? -840 : -560;
-          if (b.hurt <= 0) {
-            b.hp--;
-            b.hurt = 1.2;
-            b.state = "idle";
-            b.atk = 1.6;
-            if (Math.abs(p.vx) > 285) {
-              p.vx = -p.face * 260;
-              p.vy = -360;
-              sTackle();
-            } else p.vy = Math.max(p.vy, -560);
-            sBreak();
-            addShake(10);
-            freeze = 0.06;
-            burst(b.x + b.w / 2, b.y + 30, "spark", 14, 300);
-            popText(
-              b.x + b.w / 2,
-              b.y - 16,
-              b.hp > 0 ? "Anthropic Dario HP:" + b.hp : "Anthropic Dario 崩了!",
-              "#ff5a5a",
-            );
-            if (b.hp <= 0) defeatBoss();
-          }
-        } else if (stomping) {
-          /* 金边眼镜护盾:非硬直踩头只弹起,不破防 */
+    if (overlap(b.x + 6, b.y + 4, b.w - 12, b.h - 8, p.x + 4, p.y + 3, p.w - 8, p.h - 3)) {
+      var stomping = (p.vy > 0 && p.y + p.h - 8 < b.y + b.h * 0.55) || p.pounding;
+      if (b.state === "stun") {
+        if (stomping) p.vy = keys.jump ? -840 : -560;
+        bossDamage(b, 1, "melee");
+      } else if (b.state === "recover") {
+        if (stomping) {
           p.vy = keys.jump ? -840 : -560;
-          if (Math.random() < 0.3) {
-            sBump();
-            popText(b.x + b.w / 2, b.y - 16, "护盾!引他撞墙!", "#8ad4ff");
-          }
-        } else if (p.star > 0 && b.hurt <= 0) {
-          b.hp--;
-          b.hurt = 1.2;
-          if (b.hp <= 0) defeatBoss();
-          else {
-            burst(b.x + b.w / 2, b.y + 30, "spark", 10, 260);
-            sHurt();
-            popText(b.x + b.w / 2, b.y - 16, "无敌牛角破防!HP:" + b.hp, "#5ad4ff");
-          }
-          p.vy = -500;
+          bossDamage(b, 1, "melee");
         } else if (Math.abs(p.vx) > 285 && b.hurt <= 0) {
-          b.hp--;
-          b.hurt = 1.2;
-          b.state = "idle";
-          b.atk = 1.6;
           p.vx = -p.face * 280;
           p.vy = -360;
-          sTackle();
-          addShake(9);
-          freeze = 0.06;
-          burst(b.x + b.w / 2, b.y + 30, "spark", 14, 300);
-          popText(b.x + b.w / 2, b.y - 16, b.hp > 0 ? "冲撞破防! HP:" + b.hp : "Anthropic Dario 崩了!", "#ff5a5a");
-          if (b.hp <= 0) defeatBoss();
-        } else {
-          damagePlayer();
-        }
+          bossDamage(b, 1, "dash");
+        } else damagePlayer();
+      } else {
+        damagePlayer();
       }
     }
   }
 }
+
+/* ==================== 奶弹射击系统 ==================== */
+function sShoot() {
+  if (!AC || muted) return;
+  tone(760, 0.09, "square", 0.12, 320);
+  tone(1240, 0.05, "triangle", 0.06, 900);
+}
+function fireShot() {
+  var s = { x: PL.x + 14 + PL.face * 18, y: PL.y + 15, vx: PL.face * 470, t: 0 };
+  shots.push(s);
+  PL.shotCd = 0.32;
+  sShoot();
+  if (THREE_OK && dynGroup) {
+    var m = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff8e0 }));
+    m.position.set(worldX(s.x), worldY(s.y), 1.4);
+    dynGroup.add(m);
+    s.mesh = m;
+  }
+}
+function removeShot(i, hitFx) {
+  var s = shots[i];
+  if (hitFx) burst(s.x, s.y, "spark", 4, 120);
+  if (s.mesh && dynGroup) {
+    dynGroup.remove(s.mesh);
+    ME.disposeMesh(s.mesh);
+  }
+  shots.splice(i, 1);
+}
+function defeatMiniBoss(e, how) {
+  e.dead = true;
+  e.squash = 0.5;
+  e.fly = PL.face;
+  GS.score += 2000;
+  GS.sKill += 2000;
+  popText(e.x + e.w / 2, e.y - 10, "GPT 老板被" + how + "+2000", "#c05aff");
+  for (var cd = 0; cd < 6; cd++) spawnCoinDrop(e.x + e.w / 2 + rnd(-70, 70), e.y - 20 - cd * 14);
+  sPerfect();
+  openGate();
+}
+function updateShots(dt) {
+  for (var i = shots.length - 1; i >= 0; i--) {
+    var s = shots[i];
+    s.t += dt;
+    s.x += s.vx * dt;
+    if (s.mesh) s.mesh.position.set(worldX(s.x), worldY(s.y), 1.4);
+    var gone =
+      solid(tileAt(Math.floor(s.x / T), Math.floor(s.y / T))) || s.t > 1.4 || s.x < camX - 120 || s.x > camX + W + 120;
+    if (!gone) {
+      for (var e = 0; e < ents.length; e++) {
+        var en = ents[e];
+        if (en.k !== "miniboss" || en.dead || en.gone) continue;
+        if (overlap(s.x - 7, s.y - 7, 14, 14, en.x, en.y, en.w, en.h)) {
+          if (en.hurtT <= 0) {
+            en.hp--;
+            en.hurtT = 0.8;
+            sBreak();
+            addShake(5);
+            freeze = 0.03;
+            burst(en.x + en.w / 2, en.y + 20, "spark", 8, 220);
+            if (en.hp <= 0) defeatMiniBoss(en, "奶弹轰爆!");
+            else popText(en.x + en.w / 2, en.y - 10, "GPT 老板 HP:" + en.hp, "#ff5a5a");
+          } else {
+            sBump();
+          }
+          gone = true;
+          break;
+        }
+      }
+    }
+    if (!gone && GS.boss && !GS.boss.dead && GS.state === "play") {
+      var b = GS.boss;
+      if (overlap(s.x - 7, s.y - 7, 14, 14, b.x + 6, b.y + 4, b.w - 12, b.h - 8)) {
+        if (bossVulnerable(b)) bossDamage(b, 1, "shot");
+        else {
+          burst(s.x, s.y, "spark", 4, 140);
+          sBump();
+        }
+        gone = true;
+      }
+    }
+    if (gone) removeShot(i, true);
+  }
+}
+
 function updateFires(dt) {
   var p = PL;
   for (var i = fires.length - 1; i >= 0; i--) {
@@ -2643,11 +2749,15 @@ function defeatBoss() {
   var b = GS.boss;
   b.dead = true;
   GS.bossActive = false;
-  markCleared(19);
+  markCleared(FINAL_LV);
   for (var i2 = fires.length - 1; i2 >= 0; i2--) {
     if (fires[i2].mesh && dynGroup) dynGroup.remove(fires[i2].mesh);
   }
   fires = [];
+  if (GS.__beam) GS.__beam.visible = false;
+  if (GS.__beamWarn) GS.__beamWarn.visible = false;
+  GS.score += 5000;
+  GS.sKill += 5000;
   GS.state = "winseq";
   GS.winT = 0;
   sGoal();
@@ -2850,6 +2960,7 @@ function update(dt) {
     updatePlayer(dt);
     updateBoss(dt);
     updateFires(dt);
+    updateShots(dt);
   } else if (GS.state === "bossintro") {
     GS.bossIntro -= dt;
     PL.vy += 1500 * dt;
@@ -3731,6 +3842,39 @@ var THEME3 = [
     spike: 0x9aa0a8,
     deco: "rock",
   },
+  {
+    dirt: 0x4a3868,
+    grass: 0x9a7ae8,
+    brick: 0x7a5ab8,
+    solid: 0x574a80,
+    q: 0xffc63f,
+    plat: 0x8a72c8,
+    lava: 0xb050ff,
+    spike: 0xc9c6ea,
+    deco: "crystal",
+  },
+  {
+    dirt: 0x8a6a3f,
+    grass: 0xffd23f,
+    brick: 0xd8a03f,
+    solid: 0xa8843a,
+    q: 0xffc63f,
+    plat: 0xe8c06a,
+    lava: 0xff6a1f,
+    spike: 0xc4b48f,
+    deco: "tree",
+  },
+  {
+    dirt: 0x5a2a28,
+    grass: 0xff8a50,
+    brick: 0x8a4030,
+    solid: 0x452222,
+    q: 0xffc63f,
+    plat: 0x7a4a3a,
+    lava: 0xff6a1f,
+    spike: 0x9aa0a8,
+    deco: "rock",
+  },
 ];
 function disposeGroup(g) {
   if (!g) return;
@@ -3892,6 +4036,24 @@ function buildDecor3D(tt, idx, seed, hgt) {
     c3.scale.set(sc * 0.7, sc * 1.3, sc * 0.7);
     c3.position.set(x, hgt + 3.5, BZ);
     dynGroup.add(c3);
+  } else if (deco === "crystal") {
+    var k1 = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.8),
+      new THREE.MeshLambertMaterial({ color: 0xb08aff, emissive: 0x5a3aa8, emissiveIntensity: 0.7 }),
+    );
+    k1.scale.set(sc * 0.7, sc * 2.0, sc * 0.7);
+    k1.position.set(x, hgt + 1.6, BZ);
+    k1.rotation.y = hash(seed * 3.3) * 1.2;
+    k1.castShadow = true;
+    dynGroup.add(k1);
+    var k2 = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.5),
+      new THREE.MeshLambertMaterial({ color: 0x7ad0ff, emissive: 0x1a5a8a, emissiveIntensity: 0.7 }),
+    );
+    k2.scale.setScalar(sc);
+    k2.position.set(x + rnd(-0.9, 0.9), hgt + 0.8, BZ + rnd(-0.5, 0.5));
+    k2.castShadow = true;
+    dynGroup.add(k2);
   } else {
     var rk = ball(1.3, 0x3a3030, 8, 6);
     rk.scale.set(sc * 1.3, sc * 0.9, sc);
@@ -3901,7 +4063,7 @@ function buildDecor3D(tt, idx, seed, hgt) {
 }
 function buildServerRoom3D() {
   var floorY = worldY(12 * T);
-  for (var rx = 10; rx <= 90; rx += 10) {
+  for (var rx = 3; rx <= 31; rx += 5) {
     var rack = new THREE.Group();
     var shell = box(5.8, 7.2, 2.1, 0x151a24, 0.02);
     shell.position.y = 3.6;
@@ -3921,12 +4083,12 @@ function buildServerRoom3D() {
     rack.position.set(worldX(rx * T), floorY, -4.2);
     dynGroup.add(rack);
   }
-  var pipeA = cyl(0.2, 0.2, worldX(86 * T), 0x7b8494, 10);
+  var pipeA = cyl(0.2, 0.2, worldX(28 * T), 0x7b8494, 10);
   pipeA.rotation.z = Math.PI / 2;
-  pipeA.position.set(worldX(50 * T), floorY + 14, -4.4);
+  pipeA.position.set(worldX(17 * T), floorY + 14, -4.4);
   dynGroup.add(pipeA);
   var sign = makeTextSprite("ANTHROPIC 机房", 3.2, "#ff9adf");
-  sign.position.set(worldX(50 * T), floorY + 17, -3.8);
+  sign.position.set(worldX(17 * T), floorY + 17, -3.8);
   dynGroup.add(sign);
 }
 function buildWorld3D() {
@@ -4023,7 +4185,7 @@ function buildWorld3D() {
     GS.__flagRoot = flagRoot;
   }
   /* 装饰 */
-  if (GS.li === 19) buildServerRoom3D();
+  if (GS.li === FINAL_LV) buildServerRoom3D();
   else {
     var decoAt = 0;
     for (var dx = 6; dx < curLV.w - 4; dx += Math.floor(rnd(6, 10))) {
@@ -4111,6 +4273,21 @@ function spawnBoss3D() {
   mBoss = buildBoss();
   mBoss.scale.setScalar(2.9);
   dynGroup.add(mBoss);
+  /* 数据光束:预警红条 + 本体青白光柱 */
+  var warnM = new THREE.Mesh(
+    new THREE.BoxGeometry(32 * 3.2, 0.5, 0.6),
+    new THREE.MeshBasicMaterial({ color: 0xff4a5a, transparent: true, opacity: 0.55 }),
+  );
+  warnM.visible = false;
+  dynGroup.add(warnM);
+  GS.__beamWarn = warnM;
+  var beamM = new THREE.Mesh(
+    new THREE.BoxGeometry(32 * 3.2, 2 * 3.2 * 0.82, 1.5),
+    new THREE.MeshBasicMaterial({ color: 0x9adfff, transparent: true, opacity: 0.85 }),
+  );
+  beamM.visible = false;
+  dynGroup.add(beamM);
+  GS.__beam = beamM;
 }
 
 function sync3D() {
@@ -4274,11 +4451,20 @@ function sync3D() {
     var b = GS.boss;
     mBoss.position.set(worldX(b.x + b.w / 2), worldY(b.y + b.h), 1.6);
     mBoss.rotation.y = b.face > 0 ? 0.3 : Math.PI + 0.3; /* 左走微朝镜头,不露背面 */
+    var vuln = bossVulnerable(b);
     var hurt2 = b.hurt > 0 && ((b.hurt * 12) | 0) % 2 === 0;
     mBoss.traverse(function (o) {
       if (o.isMesh && o.material && o.material.emissive && !o.userData.keepGlow) {
         o.material.emissive.setHex(
-          hurt2 ? 0x992200 : b.state === "warn" ? (b.phase === 2 ? 0x550033 : 0x330000) : 0x000000,
+          hurt2
+            ? 0x992200
+            : vuln
+              ? 0x554400
+              : b.state === "warn"
+                ? b.next === "beam"
+                  ? 0x003355
+                  : 0x550000
+                : 0x000000,
         );
       }
     });
@@ -4294,6 +4480,19 @@ function sync3D() {
     }
     mBoss.rotation.z =
       b.state === "dash" ? Math.sin(GT * 30) * 0.06 : b.state === "stun" ? Math.sin(GT * 12) * 0.12 : 0;
+  }
+  /* 数据光束(预警闪烁 + 本体脉动) */
+  if (GS.__beamWarn && GS.boss) {
+    var bw = GS.boss;
+    var showWarn = bw.state === "warn" && bw.next === "beam";
+    GS.__beamWarn.visible = showWarn && ((GT * 8) | 0) % 2 === 0;
+    if (showWarn) GS.__beamWarn.position.set(worldX(17 * T), worldY((bw.beamRow + 1) * T), 0.8);
+    var showBeam = bw.state === "beam";
+    GS.__beam.visible = showBeam;
+    if (showBeam) {
+      GS.__beam.position.set(worldX(17 * T), worldY((bw.beamRow + 1) * T), 0.8);
+      GS.__beam.material.opacity = 0.65 + Math.sin(GT * 40) * 0.2;
+    }
   }
   /* 道具 */
   for (var j = 0; j < itms.length; j++) {
@@ -4527,6 +4726,36 @@ var SKY_PAL = [
     hillFar: "#12182c",
     cloud: "rgba(255,255,255,0.08)",
   },
+  {
+    top: "#151030",
+    mid: "#34205e",
+    bot: "#6a48a8",
+    sun: "#cfa9ff",
+    sunGlow: "rgba(170,110,255,0.45)",
+    hill: "#3a2a66",
+    hillFar: "#291d49",
+    cloud: "rgba(220,190,255,0.14)",
+  },
+  {
+    top: "#ff9e4d",
+    mid: "#ffd36a",
+    bot: "#fff3c0",
+    sun: "#fff6d8",
+    sunGlow: "rgba(255,200,90,0.55)",
+    hill: "#7cb84e",
+    hillFar: "#a8d878",
+    cloud: "rgba(255,255,255,0.95)",
+  },
+  {
+    top: "#2a0d12",
+    mid: "#7a2020",
+    bot: "#e86a30",
+    sun: "#ffc078",
+    sunGlow: "rgba(255,120,50,0.5)",
+    hill: "#401a14",
+    hillFar: "#5c2a1c",
+    cloud: "rgba(255,140,80,0.4)",
+  },
 ];
 var STARS2D = [];
 function initStars2D() {
@@ -4548,8 +4777,8 @@ function drawBG2D(c) {
   g.addColorStop(1, p.bot);
   c.fillStyle = g;
   c.fillRect(0, 0, W, H);
-  if (SKY_G === 4) {
-    /* 太空:星星 + 地球(海报同款) */
+  if (SKY_G === 4 || SKY_G === 5) {
+    /* 太空/星云:星星(月面+地球,星云纯星) */
     for (var st = 0; st < STARS2D.length; st++) {
       var s2 = STARS2D[st];
       c.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(GT * 1.5 + s2.tw));
@@ -4557,25 +4786,27 @@ function drawBG2D(c) {
       c.fillRect(s2.x, s2.y, s2.s, s2.s);
     }
     c.globalAlpha = 1;
-    var ex = 70,
-      ey = H - 70;
-    var eg = c.createRadialGradient(ex - 12, ey - 12, 8, ex, ey, 58);
-    eg.addColorStop(0, "#7ab4ff");
-    eg.addColorStop(0.6, "#2a5ac0");
-    eg.addColorStop(1, "#0a1a50");
-    c.fillStyle = eg;
-    c.beginPath();
-    c.arc(ex, ey, 56, 0, TAU);
-    c.fill();
-    c.fillStyle = "rgba(120,220,150,0.5)";
-    c.beginPath();
-    c.arc(ex - 18, ey + 8, 16, 0, TAU);
-    c.arc(ex + 14, ey - 16, 11, 0, TAU);
-    c.fill();
-    c.fillStyle = "rgba(200,230,255,0.25)";
-    c.beginPath();
-    c.arc(ex + 8, ey + 20, 20, 0, TAU);
-    c.fill();
+    if (SKY_G === 4) {
+      var ex = 70,
+        ey = H - 70;
+      var eg = c.createRadialGradient(ex - 12, ey - 12, 8, ex, ey, 58);
+      eg.addColorStop(0, "#7ab4ff");
+      eg.addColorStop(0.6, "#2a5ac0");
+      eg.addColorStop(1, "#0a1a50");
+      c.fillStyle = eg;
+      c.beginPath();
+      c.arc(ex, ey, 56, 0, TAU);
+      c.fill();
+      c.fillStyle = "rgba(120,220,150,0.5)";
+      c.beginPath();
+      c.arc(ex - 18, ey + 8, 16, 0, TAU);
+      c.arc(ex + 14, ey - 16, 11, 0, TAU);
+      c.fill();
+      c.fillStyle = "rgba(200,230,255,0.25)";
+      c.beginPath();
+      c.arc(ex + 8, ey + 20, 20, 0, TAU);
+      c.fill();
+    }
     return;
   }
   c.save();
@@ -4840,6 +5071,15 @@ function drawNoWebGL() {
   ctx.fillText("请使用较新的 Chrome / Edge / Firefox / Safari", W / 2, H / 2 + 10);
 }
 function drawFX2D() {
+  if (!THREE_OK) {
+    for (var sq = 0; sq < shots.length; sq++) {
+      var sh = shots[sq];
+      ctx.fillStyle = "#fff8e0";
+      ctx.beginPath();
+      ctx.arc(sh.x - camX, sh.y, 5, 0, TAU);
+      ctx.fill();
+    }
+  }
   for (var i = 0; i < parts.length; i++) {
     var p = parts[i];
     if (p.type === "ring") {
@@ -4899,7 +5139,7 @@ function drawOverlays(c) {
     c.fillText(curLV.name, W / 2, 282);
     c.fillStyle = "#fff";
     c.font = "16px " + FONT;
-    c.fillText(GS.li >= 19 ? "Anthropic 机房就在前面——让服务器冒烟!" : "冲呀——小心 GPT 老板守关!", W / 2, 330);
+    c.fillText(GS.li === FINAL_LV ? "Anthropic 机房就在前面——让服务器冒烟!" : "冲呀——小心 GPT 老板守关!", W / 2, 330);
     c.globalAlpha = 1;
   }
   if (GS.state === "bossintro") {
@@ -4927,7 +5167,7 @@ function drawOverlays(c) {
     c.fillText("Anthropic Dario 苏醒了!!", W / 2, 286);
     c.font = "17px " + FONT;
     c.fillStyle = "#fff";
-    c.fillText("Anthropic Dario 接管了机房——引他撞墙,再踩他的金边眼镜!", W / 2, 322);
+    c.fillText("Anthropic Dario 接管了机房——躲开红光预警,护盾解除时用奶弹(J)轰他!", W / 2, 322);
   }
   if (GS.state === "winseq") {
     c.fillStyle = "rgba(0,0,0,0.35)";
@@ -4998,7 +5238,7 @@ function drawTitle2D(c) {
     hintText(c, "点击 / Enter 选关开始", W / 2, 392 + bob * 0.4, "bold 19px " + FONT, "#fff", "center");
     hintText(
       c,
-      "←→/AD 移动 · 空格跳 · Shift 冲刺 · 空中↓坐地重击",
+      "←→/AD 移动 · 空格跳 · Shift 冲刺 · J 奶弹 · 空中↓坐地重击",
       W / 2,
       424,
       "14px " + FONT,
@@ -5155,11 +5395,11 @@ function drawTitle2D(c) {
   c.restore();
   c.restore();
 }
-var SEL_COLS = 4,
-  SEL_CW = 170,
-  SEL_CH = 74,
-  SEL_GX = 18,
-  SEL_GY = 10;
+var SEL_COLS = 6,
+  SEL_CW = 150,
+  SEL_CH = 62,
+  SEL_GX = 10,
+  SEL_GY = 8;
 function selGridX0() {
   return (W - (SEL_COLS * SEL_CW + (SEL_COLS - 1) * SEL_GX)) / 2;
 }
@@ -5191,7 +5431,7 @@ function drawSelect2D(c) {
   c.fillText("方向键/点击选择 · Enter/点击开始 · Esc 返回", W / 2, 92);
   var x0 = selGridX0(),
     y0 = selGridY0();
-  var worldCol = ["#59c14d", "#efc06e", "#8ab4ef", "#ff7a5a", "#9aa0b8"];
+  var worldCol = ["#59c14d", "#efc06e", "#8ab4ef", "#ff7a5a", "#9aa0b8", "#c08aff", "#ffb84d", "#ff6a50"];
   for (var i = 0; i < LEVELS.length; i++) {
     var r = Math.floor(i / SEL_COLS),
       col = i % SEL_COLS;
