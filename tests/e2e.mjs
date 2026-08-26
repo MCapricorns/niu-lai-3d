@@ -497,6 +497,40 @@ try {
     prepareVerticalSweep();setTile(10,10,9);setTile(10,9,12);setTile(10,8,2);setTile(10,6,2);PL.prevY=11*T;PL.y=4*T;PL.vy=-1200;collideY(PL);out.bugs.upwardSweep={y:PL.y,expected:9*T+0.01,vy:PL.vy,hitT:PL.hitT,ground:PL.ground,springK:PL.springK};
     loadLevel(0,true);var springEntry=null;for(var wk in worldBlocks){if(!springEntry&&worldBlocks[wk].kind==="spring")springEntry={key:wk,wb:worldBlocks[wk]};}function boundsResult(entry){if(!entry)return null;var parts=entry.key.split(","),ty=+parts[1],bb=new THREE.Box3().setFromObject(entry.wb.g);return {bottom:bb.min.y,expectedBottom:worldY((ty+1)*T),top:bb.max.y,expectedTop:worldY(ty*T)};}out.bugs.springBounds=boundsResult(springEntry);loadLevel(1,true);var pipeEntry=null;for(var pk in worldBlocks){if(!pipeEntry&&worldBlocks[pk].kind==="pipe")pipeEntry={key:pk,wb:worldBlocks[pk]};}out.bugs.pipeBounds=boundsResult(pipeEntry);
     loadLevel(15,true);GS.state="play"; var goal=curLV.flagX*T+T/2; PL.x=goal-PL.w/2;PL.y=11*T;PL.vx=0;PL.vy=0;PL.ground=true;updatePlayer(1/60);out.bugs.goalState=GS.state;
+    /* —— v1.9 趣味性回归:金蛋/坐地重击/蹬墙跳 —— */
+    out.fun = {};
+    out.fun.eggsPerLevel = LEVELS.map(function (lv) {
+      return (lv.eggs || []).length;
+    });
+    loadLevel(0,true);var bt=-1;for(var bti=0;bti<tiles.length;bti++){if(tiles[bti]===3){bt=bti;break;}}
+    if(bt>=0){
+      var bx=bt%curLV.w, by=Math.floor(bt/curLV.w);
+      PL.x=bx*T+4;PL.prevY=by*T-PL.h-8;PL.y=by*T-PL.h+1;PL.vy=950;PL.pounding=true;
+      collideY(PL);
+      out.fun.poundBrick={broken:tileAt(bx,by)===0,y:PL.y};
+    }
+/* 碎板测试:全关卡扫描第一块 16 碎板 */
+    loadLevel(0,true);var ct=-1;
+    for(var ctl=0;ctl<LEVELS.length&&ct<0;ctl++){loadLevel(ctl,true);for(var cti2=0;cti2<tiles.length;cti2++){if(tiles[cti2]===16){ct=cti2;break;}}}
+    if(ct>=0){
+      var cx3=ct%curLV.w, cy3=Math.floor(ct/curLV.w);
+      PL.x=cx3*T+4;PL.prevY=cy3*T-PL.h-8;PL.y=cy3*T-PL.h+1;PL.vy=950;PL.pounding=true;
+      collideY(PL);
+      out.fun.poundCrumble={collapsed:tileAt(cx3,cy3)===0};
+    }
+    loadLevel(0,true);
+    setTile(15,4,2);setTile(15,5,2);setTile(15,6,2);setTile(15,7,2);setTile(15,8,2);
+    PL.x=15*T-PL.w-2;PL.y=5*T;PL.vy=-100;PL.vx=0;PL.ground=false;PL.coyote=0;PL.jbuf=0;PL.hitR=true;PL.hitL=false;
+    keys.right=true;keys.left=false;keys.jump=false;justPressed.jump=true;keys.run=false;
+    updatePlayer(1/60);
+    out.fun.wallKick={vy:PL.vy,vx:PL.vx};
+    keys.right=false;
+    loadLevel(0,true);
+    collectEgg({x:0,y:0,taken:false});
+    out.fun.eggMarked=isEggGot(0);
+    out.fun.eggCountAfter=eggCount();
+    GS.li=0;loadLevel(0,true);GS.state="play";GS.time=300;PL.x=10*T;PL.y=10*T;PL.vy=500;PL.pounding=true;PL.prevY=PL.y-2;
+    collideY(PL);out.fun.poundLand={ground:PL.ground,pound:!!PL.pounding};
     return out;
   })()`);
   const failures = [];
@@ -560,6 +594,18 @@ try {
   }
   check(result.bugs.goalState === "clear", "visible flag did not clear the level");
   check(result.bugs.bossTriggered, "final Boss did not show up when reached");
+  /* v1.9+ 趣味性功能断言 */
+  check(
+    result.fun && result.fun.eggsPerLevel.length === 20 && result.fun.eggsPerLevel.every((n) => n === 1),
+    "each level should contain exactly 1 golden egg",
+  );
+  check(result.fun?.poundBrick?.broken, "ground pound failed to break a brick");
+  check(result.fun?.poundCrumble?.collapsed, "ground pound failed to collapse a crumble tile");
+  check(
+    result.fun?.wallKick && result.fun.wallKick.vy < -500 && result.fun.wallKick.vx < -150,
+    "wall jump output regressed",
+  );
+  check(result.fun?.eggMarked && result.fun.eggCountAfter >= 1, "golden egg collection did not persist");
   /* 冒烟:每关无异常、机器人有前进 */
   for (const route of result.routes) {
     check(!route.error, `smoke error in ${route.name}: ${route.error}`);

@@ -12,7 +12,7 @@ var W = 960,
   TAU = Math.PI * 2;
 var START_LIVES = 9;
 var FONT = '"ZCOOL KuaiLe","Microsoft YaHei",sans-serif';
-var VER = "v1.7.1";
+var VER = "v1.10.0";
 var GH = { x: -1, y: -1, w: 0, h: 0 }; /* 作者GitHub徽章热区 */
 var CLR = { x: -1, y: -1, w: 0, h: 0 }; /* 选关页"清空成绩"按钮热区 */
 function clamp(v, a, b) {
@@ -331,6 +331,24 @@ function sNiuLai() {
   shout(240, 540, 0.7, t0 + 0.4, 0.45);
   noise(0.5, 0.12, 600, t0 + 0.4);
 }
+function sKick() {
+  if (!AC) return; /* 蹬墙跳:短促的牛蹄扒墙+呼 */
+  tone(460, 0.09, "square", 0.14, 300);
+  noise(0.07, 0.1, 2400);
+}
+function sPound() {
+  if (!AC) return; /* 坐地重击:低音闷雷+尘土 */
+  tone(110, 0.2, "square", 0.22, 45);
+  noise(0.22, 0.3, 480);
+}
+function sGolden() {
+  if (!AC) return; /* 金蛋:叮叮当当的蛋壳回音 */
+  var t = AC.currentTime;
+  [1047, 1319, 1568, 2093].forEach(function (f, i) {
+    tone(f, 0.09, "triangle", 0.16, 0, t + i * 0.06);
+  });
+  noise(0.08, 0.08, 5200, t);
+}
 
 /* ---------------- 音乐 ---------------- */
 var MUS = { on: true, tempo: 0, pat: null, step: 0, next: 0, timer: null };
@@ -477,6 +495,8 @@ var keyMap = {
   ArrowUp: "jump",
   KeyW: "jump",
   KeyZ: "jump",
+  ArrowDown: "pound",
+  KeyS: "pound",
 };
 var justPressed = {};
 function resetKeys() {
@@ -606,6 +626,7 @@ if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
   bindTouch("btnR", "right");
   bindTouch("btnJ", "jump", true);
   bindTouch("btnB", "run");
+  bindTouch("btnP", "pound", true);
 }
 
 /* ---------------- 特效 ---------------- */
@@ -699,7 +720,8 @@ function isCleared(i) {
   }
 }
 function isUnlocked(i) {
-  return i === 0 || isCleared(i - 1);
+  /* v1.10:全关卡开放,任意跳关游玩(通关标记保留用于 ✓ 显示) */
+  return true;
 }
 function markCleared(i) {
   try {
@@ -708,6 +730,41 @@ function markCleared(i) {
     s = s.slice(0, i) + "1" + s.slice(i + 1);
     localStorage.setItem("niu_clear", s);
   } catch (e) {}
+}
+/* v1.9 金蛋收集:每关藏 1 颗,捡齐 20 颗拿大满贯 */
+function isEggGot(i) {
+  try {
+    var s = localStorage.getItem("niu_eggs") || "";
+    return s.length > i && s.charCodeAt(i) === 49;
+  } catch (e) {
+    return false;
+  }
+}
+function markEgg(i) {
+  try {
+    var s = (localStorage.getItem("niu_eggs") || "").padEnd(20, "0");
+    if (s.charCodeAt(i) === 49) return false;
+    s = s.slice(0, i) + "1" + s.slice(i + 1);
+    localStorage.setItem("niu_eggs", s);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+function eggCount() {
+  var n = 0;
+  try {
+    var s = localStorage.getItem("niu_eggs") || "";
+    for (var i = 0; i < s.length; i++) if (s.charCodeAt(i) === 49) n++;
+  } catch (e) {}
+  return n;
+}
+function eggFullBadge() {
+  try {
+    return !!localStorage.getItem("niu_eggs_full") && eggCount() >= LEVELS.length;
+  } catch (e) {
+    return false;
+  }
 }
 try {
   if (localStorage.getItem("niu_ver") !== "2") {
@@ -723,6 +780,7 @@ try {
 var curLV = null,
   tiles = null,
   coinsEnt = [],
+  eggsEnt = [],
   ents = [],
   itms = [],
   bumps = [],
@@ -773,28 +831,47 @@ function setTile(tx, ty, c) {
   if (tx >= 0 && tx < curLV.w && ty >= 0 && ty < curLV.h) tiles[ty * curLV.w + tx] = c;
 }
 
-function spawnMiniBoss(tx) {
-  var world = Math.floor(GS.li / 4) + 1;
-  var hp = world >= 5 ? 4 : world >= 3 ? 3 : 2;
-  var style = ["chase", "hopper", "charger", "lobber", "berserk"][Math.min(world, 5) - 1];
-  /* 安全落点扫描:在目标列附近找"脚下实心+头顶三格净空"的柱位,绝不悬空生成坠坑消失 */
-  var sx = tx,
-    sy = 9;
-  outer: for (var off = 0; off <= 6; off++) {
+/* 老板安全落点:
+   1) 脚下同行左右各 2 格都是实心(1/2)的"五格坪台"——在坪台上追击不落坑;
+   2) 老板矩形(66x60)整体净空:头顶/侧身不嵌任何硬墙(含旗门17);
+   3) 找不到就在整关从后往前扫,最后兜底出生点。*/
+function bossSpotOK(cx, gy) {
+  if (curLV.get(cx, gy) !== 1 && curLV.get(cx, gy) !== 2) return false;
+  for (var d = -2; d <= 2; d++) {
+    var gv = curLV.get(cx + d, gy);
+    if (gv !== 1 && gv !== 2) return false;
+  }
+  var dummy = { x: cx * T, y: gy * T - 61, w: 66, h: 60 };
+  if (entWallHit(dummy, dummy.x, dummy.y)) return false;
+  for (var d2 = -3; d2 <= -1; d2++) {
+    if (curLV.get(cx, gy + d2) !== 0) return false;
+  }
+  return true;
+}
+function findBossSpot(tx, fromRight) {
+  var best = null;
+  outer: for (var off = 0; off <= 14; off++) {
     for (var dir = 0; dir < 2; dir++) {
       var cx = tx + (dir === 0 ? off : -off);
-      if (cx < 8 || cx > curLV.w - 8) continue;
-      for (var gy = 12; gy >= 5; gy--) {
-        var g1 = curLV.get(cx, gy);
-        if (g1 !== 1 && g1 !== 2) continue;
-        if (curLV.get(cx, gy - 1) === 0 && curLV.get(cx, gy - 2) === 0 && curLV.get(cx, gy - 3) === 0) {
-          sx = cx;
-          sy = gy;
+      if (cx < 6 || cx > curLV.w - 8) continue;
+      for (var gy = 12; gy >= 6; gy--) {
+        if (bossSpotOK(cx, gy)) {
+          best = { x: cx, y: gy };
           break outer;
         }
       }
     }
   }
+  return best;
+}
+function spawnMiniBoss(tx) {
+  var world = Math.floor(GS.li / 4) + 1;
+  var hp = world >= 5 ? 4 : world >= 3 ? 3 : 2;
+  var style = ["chase", "hopper", "charger", "lobber", "berserk"][Math.min(world, 5) - 1];
+  var spot = findBossSpot(tx) || findBossSpot(curLV.w - 12) || null;
+  if (!spot) spot = { x: Math.max(6, Math.min(curLV.startX + 6, curLV.w - 10)), y: 12 };
+  var sx = spot.x,
+    sy = spot.y;
   ents.push({
     k: "miniboss",
     w: 66,
@@ -822,6 +899,8 @@ function spawnMiniBoss(tx) {
     stickT: 0,
     lsx: sx * T,
     lsy: sy * T - 60 - 0.01,
+    retr: { x: sx * T, y: sy * T - 61 },
+    rescues: 0,
   });
 }
 function loadLevel(i, fresh) {
@@ -831,6 +910,7 @@ function loadLevel(i, fresh) {
   curLV = LEVELS[i];
   tiles = curLV.T.slice(0);
   coinsEnt = [];
+  eggsEnt = [];
   ents = [];
   itms = [];
   bumps = [];
@@ -843,6 +923,10 @@ function loadLevel(i, fresh) {
   for (j = 0; j < curLV.coins.length; j++) {
     var c = curLV.coins[j];
     coinsEnt.push({ x: c.x * T + T / 2, y: c.y * T + T / 2, t: c.t, taken: false, big: !!c.big });
+  }
+  for (j = 0; j < (curLV.eggs ? curLV.eggs.length : 0); j++) {
+    var eg = curLV.eggs[j];
+    eggsEnt.push({ x: eg.x * T + T / 2, y: eg.y * T + T / 2, t: eg.t, taken: false });
   }
   for (j = 0; j < curLV.ents.length; j++) {
     var e = curLV.ents[j];
@@ -1082,6 +1166,32 @@ function collectCoin(c, fromBlock) {
   burst(c.x, c.y, "spark", 6, 180);
   popText(c.x, c.y - 8, "+100", "#ffe08a");
 }
+function collectEgg(c) {
+  c.taken = true;
+  GS.score += 1000;
+  GS.sBonus += 1000;
+  GS.time += 5;
+  sGolden();
+  burst(c.x, c.y, "spark", 14, 260);
+  popText(c.x, c.y - 10, "金蛋!+1000 +5秒", "#ffd23f");
+  /* 首次拿到本关金蛋才计入收集进度 */
+  if (markEgg(GS.li) && eggCount() >= LEVELS.length) {
+    var gotFull = false;
+    try {
+      if (!localStorage.getItem("niu_eggs_full")) {
+        localStorage.setItem("niu_eggs_full", "1");
+        gotFull = true;
+      }
+    } catch (e) {}
+    if (gotFull) {
+      GS.lives++;
+      GS.score += 5000;
+      GS.sBonus += 5000;
+      sOneUp();
+      popText(c.x, c.y - 34, "金蛋大满贯!! +1命 +5000", "#ffd23f");
+    }
+  }
+}
 function spawnCoinDrop(x, y) {
   var c = { x: x, y: y, t: Math.random() * TAU, taken: false };
   coinsEnt.push(c);
@@ -1211,6 +1321,26 @@ function updatePlayer(dt) {
     popText(p.x + 14, p.y - 16, "哞!", "#ffd43f");
     burst(p.x + 14, p.y + p.h, "dust", 6, 90);
   }
+  if (p.jbuf > 0 && !p.ground && ((p.hitL && keys.left) || (p.hitR && keys.right))) {
+    /* 蹬墙跳:贴墙扑跳,可连续蹬墙冲上高处 */
+    var wjD = p.hitL ? 1 : -1;
+    p.vy = PL.big ? -730 : -650;
+    p.vx = wjD * 235;
+    p.coyote = 0;
+    p.jbuf = 0;
+    sKick();
+    popText(p.x + 14, p.y - 16, "蹬墙!", "#8ad4ff");
+    burst(p.x + (p.hitL ? 0 : p.w), p.y + 12, "spark", 7, 180);
+  }
+  if (justPressed.pound) {
+    justPressed.pound = false;
+    if (!p.ground) {
+      /* 坐地重击:空中下压,落地震碎砖块/踏碎板/坐晕敌人 */
+      p.pounding = true;
+      p.vy = Math.max(p.vy, 950);
+      popText(p.x + 14, p.y - 16, "坐地重击!", "#ff9a3f");
+    }
+  }
   /* 马里奥式重力:按住=飘,松开=截断;下落更重 */
   var grav = p.vy < 0 ? (keys.jump ? 1250 : 3300) : 2250;
   p.vy += grav * dt;
@@ -1221,7 +1351,44 @@ function updatePlayer(dt) {
   p.y += p.vy * dt;
   collideY(p);
   if (!p._wasG && p.ground) {
-    if (p._vyPrev > 420) {
+    if (p.pounding) {
+      /* 重击落地:土冲波+强震+短暂定格,坐晕附近敌人 */
+      p.pounding = false;
+      p.squash = 0.24;
+      sPound();
+      addShake(9);
+      freeze = 0.05;
+      burst(p.x + 14, p.y + p.h, "dust", 16, 260);
+      part({
+        x: p.x + 14,
+        y: p.y + p.h,
+        vx: 0,
+        vy: 0,
+        g: 0,
+        life: 0.35,
+        t: 0,
+        type: "ring",
+        size: 10,
+        col: "rgba(255,210,110,0.9)",
+      });
+      popText(p.x + 14, p.y - 22, "震撼鸡屁踢!", "#ffb03f");
+      var py2 = Math.floor(p.y / T);
+      for (var qc = 0; qc < 3; qc++) {
+        if (hash(qc * 7.3) < 0.4)
+          part({
+            x: p.x + 14 + rnd(-70, 70),
+            y: p.y + p.h - rnd(0, 10),
+            vx: rnd(-90, 90),
+            vy: rnd(-220, -60),
+            g: 500,
+            life: 0.5,
+            t: 0,
+            type: "dust",
+            size: 4,
+            col: "rgba(255,230,180,0.9)",
+          });
+      }
+    } else if (p._vyPrev > 420) {
       burst(p.x + 14, p.y + p.h, "dust", 7, 140);
       addShake(Math.min(5, p._vyPrev / 220));
       part({
@@ -1266,6 +1433,12 @@ function updatePlayer(dt) {
       if (dm2 < 900 || (Math.abs(c.x - (p.x + p.w / 2)) < 26 && Math.abs(c.y - (p.y + p.h / 2)) < 34))
         collectCoin(c, false);
     }
+  }
+  /* 金蛋收集 */
+  for (var egq = 0; egq < eggsEnt.length; egq++) {
+    var eggEnt = eggsEnt[egq];
+    if (eggEnt.taken) continue;
+    if (Math.abs(eggEnt.x - (p.x + p.w / 2)) < 30 && Math.abs(eggEnt.y - (p.y + p.h / 2)) < 40) collectEgg(eggEnt);
   }
   for (var j = itms.length - 1; j >= 0; j--) {
     var it = itms[j];
@@ -1454,12 +1627,34 @@ function collideY(o) {
           o.y = surfaceY - o.h - 0.01;
           o.vy = -1040;
           o.springK = 0.3;
+          o.pounding = false;
           GS.springSq = 1;
           sSpring();
           bumps.push({ x: tx, y: ty, t: 0, sp: true });
           o.hitB = true;
           o.ground = false;
           break;
+        }
+        if (c === 3 && o === PL && o.pounding) {
+          /* 坐地重击砸砖:砸穿下沉,继续扫更低的行 */
+          setTile(tx, ty, 0);
+          sBreak();
+          addShake(3);
+          GS.score += 50;
+          GS.sBonus += 50;
+          burst(tx * T + T / 2, ty * T + T / 2, "shard", 8, 260);
+          refreshWorldBlock(tx, ty);
+          continue;
+        }
+        if (c === 16 && o === PL && o.pounding) {
+          /* 坐地重击踏碎板:当场踏穿,继续下沉 */
+          setTile(tx, ty, 0);
+          var cwb = worldBlocks[tx + "," + ty];
+          if (cwb && cwb.g) dynGroup.remove(cwb.g);
+          delete crumbles[tx + "," + ty];
+          burst(tx * T + T / 2, ty * T + T / 2, "shard", 8, 240);
+          sBreak();
+          continue;
         }
         if (c === 10 || c === 16 || solid(c) || (c === 9 && prevBottom <= surfaceY + 6)) {
           o.y = surfaceY - o.h - 0.01;
@@ -1780,13 +1975,13 @@ function updateEnemies(dt) {
       if (e.hurtT > 0) {
         e.hurtT -= dt;
       } else {
-        /* 卡墙自救:持续嵌入超时回安全点 */
+        /* 卡墙自救:持续嵌入超时回固定安全坪台(而非原地反复卡死) */
         if (entWallHit(e, e.x, e.y)) {
           e.stickT += dt;
           if (e.stickT > 0.75) {
             e.stickT = 0;
-            e.x = e.lsx;
-            e.y = e.lsy;
+            e.x = e.retr.x;
+            e.y = e.retr.y;
             e.vx = 0;
             e.vy = 0;
           }
@@ -1919,14 +2114,17 @@ function updateEnemies(dt) {
           e.vx *= 0.12;
         }
         if (!lb && e.y > H + 40) {
-          /* 坠坑不消失:回安全点再战(杜绝坠坑白嫖旗门) */
-          e.x = e.lsx;
-          e.y = e.lsy - T * 2;
+          /* 坠坑不消失:回固定安全坪台再战;同一位置反复坠坑就强制拉回出生坪台 */
+          e.rescues = (e.rescues || 0) + 1;
+          var back = e.rescues >= 3 ? e.retr : e.retr;
+          e.x = back.x;
+          e.y = back.y + rnd(-30, 0);
           e.vx = 0;
           e.vy = 0;
-          e.tele = 0.4;
+          e.tele = 0.55;
           e.chargeT = 0;
           popText(e.x + e.w / 2, e.y - 24, "老板爬回来了!", "#ff5adf");
+          if (e.rescues >= 3) popText(e.x + e.w / 2, e.y - 48, "老板放弃了! 已回出生坪台", "#ff8a5a");
         } /* 掉坑=短暂撤退,旗门必须正面打 */
       }
     } else {
@@ -1974,7 +2172,7 @@ function updateEnemies(dt) {
       /* 云雀永远友好 */
       var ov = overlap(e.x + 3, e.y + 4, e.w - 6, e.h - 6, p.x + 3, p.y + 3, p.w - 6, p.h - 3);
       if (ov) {
-        var stomping = p.vy > 0 && p.y + p.h - 6 < e.y + e.h * 0.5;
+        var stomping = (p.vy > 0 && p.y + p.h - 6 < e.y + e.h * 0.5) || p.pounding;
         if (e.k === "miniboss") {
           if (stomping) {
             /* 踩头永远弹起;无敌帧内不重复计伤、绝不扣血 */
@@ -2335,7 +2533,7 @@ function updateBoss(dt) {
     var ov = overlap(b.x + 6, b.y + 4, b.w - 12, b.h - 8, p.x + 4, p.y + 3, p.w - 8, p.h - 3);
     if (ov) {
       {
-        var stomping = p.vy > 0 && p.y + p.h - 8 < b.y + b.h * 0.55;
+        var stomping = (p.vy > 0 && p.y + p.h - 8 < b.y + b.h * 0.55) || p.pounding;
         if (b.state === "stun") {
           /* 硬直窗口:任何方式接触都能重创 */
           if (stomping) p.vy = keys.jump ? -840 : -560;
@@ -3378,6 +3576,26 @@ function buildMiniBoss() {
   wrap2.userData = g.userData;
   return wrap2;
 }
+function buildEgg3D() {
+  var g = new THREE.Group();
+  var shell = ball(0.34, 0xfff8e0, 10, 8);
+  shell.scale.set(1, 1.38, 0.92);
+  clay(shell.geometry, 0.02);
+  g.add(shell);
+  var dot = ball(0.06, 0xffd23f, 6, 5);
+  dot.position.set(0.12, 0.22, 0.26);
+  g.add(dot);
+  var dot2 = ball(0.05, 0xffd23f, 6, 5);
+  dot2.position.set(-0.16, -0.1, 0.24);
+  g.add(dot2);
+  var dot3 = ball(0.045, 0xffa33f, 6, 5);
+  dot3.position.set(0.08, -0.24, 0.22);
+  g.add(dot3);
+  var shine = ball(0.05, 0xffffff, 5, 4);
+  shine.position.set(0.22, 0.3, 0.28);
+  g.add(shine);
+  return g;
+}
 function buildItem3D(k) {
   var g = new THREE.Group();
   if (k === "milk") {
@@ -4024,6 +4242,13 @@ function buildWorld3D() {
     dynGroup.add(cm);
     co.mesh = cm;
   }
+  /* 金蛋 */
+  for (j = 0; j < eggsEnt.length; j++) {
+    var eggm = eggsEnt[j];
+    eggm.mesh = buildEgg3D();
+    eggm.mesh.position.set(worldX(eggm.x), worldY(eggm.y), 0.2);
+    dynGroup.add(eggm.mesh);
+  }
   /* 玩家 */
   mCalf = buildCalf();
   mCalf.scale.setScalar(1.55);
@@ -4125,7 +4350,14 @@ function sync3D() {
     var jy = inTitle ? 0 : wy(PL.y + PL.h);
     mCalf.position.set(inTitle ? -5.5 : wx(PL.x + 14), inTitle ? 0.45 : jy, inTitle ? 1.6 : 1.4);
     mCalf.rotation.y = inTitle ? -Math.PI / 2 + Math.sin(GT * 0.5) * 0.28 : PL.face > 0 ? 0 : Math.PI;
-    mCalf.rotation.x = PL.star > 0 ? GT * 4 : !PL.ground && !inTitle ? clamp(-PL.vy * 0.0003, -0.22, 0.26) : 0;
+    mCalf.rotation.x =
+      PL.pounding && !PL.ground
+        ? GT * 15
+        : PL.star > 0
+          ? GT * 4
+          : !PL.ground && !inTitle
+            ? clamp(-PL.vy * 0.0003, -0.22, 0.26)
+            : 0;
     var lean = clamp(-PL.vx * 0.00045, -0.16, 0.16);
     mCalf.rotation.z = (moving ? Math.sin(GT * 13) * 0.04 : PL.big ? 0 : Math.sin(GT * 2) * 0.015) + lean;
     var sq = PL.squash > 0 ? Math.sin((PL.squash / 0.12) * Math.PI) : 0;
@@ -4299,6 +4531,17 @@ function sync3D() {
         c2.mesh.rotation.y = Math.sin(GT * 5 + k2) * 0.8;
         c2.mesh.position.y = worldY(c2.y + Math.sin(c2.t * 4) * (c2.big ? 5 : 3));
       }
+    }
+  }
+  /* 金蛋漂浮闪金光 */
+  for (var k3 = 0; k3 < eggsEnt.length; k3++) {
+    var eg3 = eggsEnt[k3];
+    if (!eg3.mesh) continue;
+    if (eg3.taken) eg3.mesh.visible = false;
+    else {
+      eg3.mesh.visible = true;
+      eg3.mesh.position.y = worldY(eg3.y + Math.sin(eg3.t * 3.2) * 4);
+      eg3.mesh.rotation.y = Math.sin(GT * 2 + k3) * 0.5;
     }
   }
   /* 碎板预警:坍塌前逐渐加剧抖动。 */
@@ -4595,6 +4838,16 @@ function hintText(c, txt, x, y, font, fill, align) {
   c.fillStyle = fill;
   c.fillText(txt, x, y);
 }
+function rr(c, x, y, w, h, r) {
+  /* 圆角矩形路径(与浏览器 roundRect 无关,兼容老内核) */
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
 function drawHUD2D(c) {
   c.textBaseline = "middle";
   /* 顶部深色底条:文字不再糊在天空上 */
@@ -4637,6 +4890,33 @@ function drawHUD2D(c) {
   c.fill();
   hintText(c, "×" + GS.coins, 108, 26, "bold 18px " + FONT, "#fff", "left");
   hintText(c, ("0000000" + GS.score).slice(-7), 168, 26, "bold 18px " + FONT, "#ffd23f", "left");
+  /* 金蛋收集进度 */
+  var eggn = eggCount(),
+    eggFull = eggn >= LEVELS.length;
+  c.save();
+  c.translate(268, 25);
+  c.fillStyle = eggFull ? "rgba(255,210,63,0.35)" : "rgba(255,248,224,0.28)";
+  c.beginPath();
+  c.ellipse(0, 1, 6.5, 8.5, 0, 0, TAU);
+  c.fill();
+  c.fillStyle = eggFull ? "#ffd23f" : "#fff6d8";
+  c.beginPath();
+  c.ellipse(0, 0, 4.6, 6.2, 0, 0, TAU);
+  c.fill();
+  c.fillStyle = "#ffa33f";
+  c.beginPath();
+  c.arc(1.6, -1.6, 1, 0, TAU);
+  c.fill();
+  c.restore();
+  hintText(
+    c,
+    "×" + eggn + "/" + LEVELS.length + (eggFull ? " ✓" : ""),
+    278,
+    26,
+    "bold 18px " + FONT,
+    eggFull ? "#ffd23f" : "#fff",
+    "left",
+  );
   c.textAlign = "center";
   hintText(c, curLV ? curLV.name : "", W / 2, 16, "14px " + FONT, "rgba(255,255,255,0.95)", "center");
   hintText(
@@ -4918,16 +5198,27 @@ function drawTitle2D(c) {
     hintText(c, "点击 / Enter 选关开始", W / 2, 392 + bob * 0.4, "bold 19px " + FONT, "#fff", "center");
     hintText(
       c,
-      "←→/AD 移动 · 空格跳 · Shift 冲刺 · 踩头连击",
+      "←→/AD 移动 · 空格跳 · Shift 冲刺 · 空中↓坐地重击",
       W / 2,
       424,
       "14px " + FONT,
       "rgba(255,255,255,0.95)",
       "center",
     );
-    hintText(c, "空中连踩出 COMBO · 全速冲刺撞飞敌人", W / 2, 448, "14px " + FONT, "rgba(255,255,255,0.95)", "center");
+    hintText(
+      c,
+      "空中连踩出 COMBO · 全速冲刺撞飞 · 贴墙跳=蹬墙跳",
+      W / 2,
+      448,
+      "14px " + FONT,
+      "rgba(255,255,255,0.95)",
+      "center",
+    );
     if (GS.hs > 0) {
       hintText(c, "最高分 " + GS.hs, W / 2, 478, "14px " + FONT, "#ffd23f", "center");
+    }
+    if (eggFullBadge()) {
+      hintText(c, "🥚 金蛋大满贯 · 20/20 全图 GET!", W / 2, 502, "14px " + FONT, "#ffd23f", "center");
     }
   } else {
     c.fillStyle = "#ffd23f";
@@ -4953,25 +5244,115 @@ function drawTitle2D(c) {
     W / 2,
     H - 18,
   );
-  var gw2 = 320,
-    gh2 = 42,
-    gx2 = W - gw2 - 20,
-    gy2 = H - 70;
+  /* —— GitHub 徽章:深空导航渐变卡 · 牛头盾徽 · 呼吸光晕 —— */
+  var gw2 = 352,
+    gh2 = 62,
+    gx2 = W - gw2 - 16,
+    gy2 = H - 90;
   GH.x = gx2;
   GH.y = gy2;
   GH.w = gw2;
   GH.h = gh2;
   c.save();
-  c.fillStyle = "rgba(16,20,34,0.88)";
-  c.fillRect(gx2, gy2, gw2, gh2);
-  c.strokeStyle = "#6ea8ff";
+  var pulse = 0.5 + Math.sin(GT * 2.2) * 0.5;
+  c.translate(gx2 + gw2 / 2, gy2 + gh2 / 2);
+  var bs = 1 + Math.sin(GT * 2.2) * 0.012;
+  c.scale(bs, bs);
+  c.translate(-gw2 / 2, -gh2 / 2);
+  /* 呼吸外发光 */
+  c.shadowColor = "rgba(255,190,60," + (0.3 + pulse * 0.25) + ")";
+  c.shadowBlur = 16 + pulse * 10;
+  var bg2 = c.createLinearGradient(0, 0, 0, gh2);
+  bg2.addColorStop(0, "rgba(24,32,66,0.97)");
+  bg2.addColorStop(0.52, "rgba(48,34,86,0.95)");
+  bg2.addColorStop(1, "rgba(74,32,98,0.93)");
+  c.fillStyle = bg2;
+  rr(c, 0, 0, gw2, gh2, 15);
+  c.fill();
+  c.shadowBlur = 0;
+  /* 金→冰蓝渐变描边 */
+  var eg = c.createLinearGradient(0, 0, gw2, gh2);
+  eg.addColorStop(0, "#ffd23f");
+  eg.addColorStop(0.55, "rgba(255,170,80,0.45)");
+  eg.addColorStop(1, "#8ab4ff");
+  c.strokeStyle = eg;
   c.lineWidth = 2;
-  c.strokeRect(gx2, gy2, gw2, gh2);
-  c.fillStyle = "#ffd23f";
-  c.font = "bold 15px " + FONT;
-  c.textAlign = "center";
+  rr(c, 1, 1, gw2 - 2, gh2 - 2, 14);
+  c.stroke();
+  /* 左侧:牛头盾徽 */
+  var ax = 34,
+    ay = gh2 / 2;
+  c.strokeStyle = "rgba(255,210,63,0.6)";
+  c.lineWidth = 3.2;
+  c.lineCap = "round";
+  c.beginPath();
+  c.moveTo(ax - 10, ay - 10);
+  c.quadraticCurveTo(ax - 17, ay - 16, ax - 21, ay - 13);
+  c.stroke();
+  c.beginPath();
+  c.moveTo(ax + 10, ay - 10);
+  c.quadraticCurveTo(ax + 17, ay - 16, ax + 21, ay - 13);
+  c.stroke();
+  var ag2 = c.createRadialGradient(ax - 5, ay - 6, 2, ax, ay, 21);
+  ag2.addColorStop(0, "#fff0c0");
+  ag2.addColorStop(0.55, "#ffd76a");
+  ag2.addColorStop(1, "#e8a838");
+  c.fillStyle = ag2;
+  c.beginPath();
+  c.arc(ax, ay, 17.5, 0, TAU);
+  c.fill();
+  c.strokeStyle = "#8a5a20";
+  c.lineWidth = 1.8;
+  c.beginPath();
+  c.arc(ax, ay, 17.5, 0, TAU);
+  c.stroke();
+  c.fillStyle = "#2a1a10";
+  c.beginPath();
+  c.arc(ax - 6, ay - 2, 2, 0, TAU);
+  c.arc(ax + 6, ay - 2, 2, 0, TAU);
+  c.fill();
+  c.fillStyle = "#fff";
+  c.beginPath();
+  c.arc(ax - 7, ay - 3, 0.8, 0, TAU);
+  c.arc(ax + 5, ay - 3, 0.8, 0, TAU);
+  c.fill();
+  c.fillStyle = "rgba(255,255,255,0.9)";
+  c.beginPath();
+  c.ellipse(ax, ay + 7, 8.5, 5.5, 0, 0, TAU);
+  c.fill();
+  c.fillStyle = "#6a5a80";
+  c.beginPath();
+  c.arc(ax - 3.4, ay + 7, 1.1, 0, TAU);
+  c.arc(ax + 3.4, ay + 7, 1.1, 0, TAU);
+  c.fill();
+  /* 文案 */
+  c.textAlign = "left";
   c.textBaseline = "middle";
-  c.fillText("★ 点赞收藏 · github.com/MCapricorns/niu-lai-3d", gx2 + gw2 / 2, gy2 + gh2 / 2 + 1);
+  c.fillStyle = "#fff";
+  c.font = "bold 15px " + FONT;
+  c.fillText("github.com", 64, 18);
+  c.fillStyle = "#ffd23f";
+  c.font = "bold 13px " + FONT;
+  c.fillText("/MCapricorns/niu-lai-3d", 64, 37);
+  c.fillStyle = "rgba(190,216,255,0.9)";
+  c.font = "10px " + FONT;
+  c.fillText("★ 点赞收藏 · 让牛来冲得更远", 64, 53);
+  /* 右端:动态 ↗ 外链箭头 */
+  c.save();
+  c.translate(gw2 - 24, gh2 / 2);
+  c.rotate(Math.sin(GT * 2.2) * 0.16);
+  c.strokeStyle = "#9ad2ff";
+  c.lineWidth = 2.6;
+  c.lineCap = "round";
+  c.lineJoin = "round";
+  c.beginPath();
+  c.moveTo(-8, 8);
+  c.lineTo(6, -6);
+  c.moveTo(0, -8);
+  c.lineTo(6, -6);
+  c.lineTo(8, 0);
+  c.stroke();
+  c.restore();
   c.restore();
 }
 var SEL_COLS = 4,
@@ -5039,14 +5420,19 @@ function drawSelect2D(c) {
     try {
       blv = parseInt(localStorage.getItem("niu_best_lv" + i) || "0", 10) || 0;
     } catch (e) {}
+    var eggTag = isEggGot(i) ? " 🥚" : "";
     if (blv > 0) {
       c.fillStyle = "rgba(255,210,63,0.8)";
       c.font = "11px " + FONT;
-      c.fillText("最佳 " + blv + (isCleared(i) ? " ✓" : ""), x + SEL_CW / 2, y + 59);
+      c.fillText("最佳 " + blv + (isCleared(i) ? " ✓" : "") + eggTag, x + SEL_CW / 2, y + 59);
     } else if (isCleared(i)) {
       c.fillStyle = "rgba(138,255,90,0.9)";
       c.font = "bold 11px " + FONT;
-      c.fillText("✓ 已通关", x + SEL_CW / 2, y + 59);
+      c.fillText("✓ 已通关" + eggTag, x + SEL_CW / 2, y + 59);
+    } else if (isEggGot(i)) {
+      c.fillStyle = "rgba(255,248,224,0.9)";
+      c.font = "11px " + FONT;
+      c.fillText("🥚 金蛋", x + SEL_CW / 2, y + 59);
     }
   }
   c.fillStyle = "rgba(255,255,255,0.5)";
@@ -5104,9 +5490,12 @@ function drawOver2D(c) {
   c.fillStyle = "rgba(255,255,255,0.6)";
   c.font = "15px " + FONT;
   c.fillText("金币 " + GS.sCoin + " + 击杀 " + GS.sKill + " + 奖励 " + GS.sBonus, W / 2, H / 2 + 32);
+  c.fillStyle = eggFullBadge() ? "#ffd23f" : "rgba(255,255,255,0.75)";
+  c.font = "15px " + FONT;
+  c.fillText("金蛋 x" + eggCount() + "/" + LEVELS.length + (eggFullBadge() ? " · 大满贯!" : ""), W / 2, H / 2 + 54);
   c.fillStyle = "#ffd23f";
   c.font = "bold 22px " + FONT;
-  c.fillText("按 Enter / 点击 返回标题", W / 2, H / 2 + 58);
+  c.fillText("按 Enter / 点击 返回标题", W / 2, H / 2 + 84);
 }
 function drawWin2D(c) {
   c.fillStyle = "rgba(8,8,20,0.72)";
@@ -5125,9 +5514,12 @@ function drawWin2D(c) {
   c.fillStyle = "rgba(160,220,255,0.9)";
   c.font = "16px " + FONT;
   c.fillText("Anthropic 机房服务器集群冒烟,牛来从过热警报中凯旋。谢谢玩!", W / 2, H / 2 + 16);
+  c.fillStyle = eggFullBadge() ? "#ffd23f" : "rgba(255,255,255,0.7)";
+  c.font = "14px " + FONT;
+  c.fillText("金蛋 x" + eggCount() + "/" + LEVELS.length + (eggFullBadge() ? " · 🥚 大满贯!" : ""), W / 2, H / 2 + 38);
   c.fillStyle = "rgba(255,255,255,0.7)";
   c.font = "14px " + FONT;
-  c.fillText("最高分 " + GS.hs, W / 2, H / 2 + 50);
+  c.fillText("最高分 " + GS.hs, W / 2, H / 2 + 62);
   c.fillStyle = "rgba(110,168,255,0.85)";
   c.font = "13px " + FONT;
   c.fillText("★ github.com/MCapricorns/niu-lai-3d · 点赞收藏", W / 2, H / 2 + 78);
