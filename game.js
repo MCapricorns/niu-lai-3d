@@ -12,7 +12,7 @@ var W = 960,
   TAU = Math.PI * 2;
 var START_LIVES = 9;
 var FONT = '"ZCOOL KuaiLe","Microsoft YaHei",sans-serif';
-var VER = "v1.12.1";
+var VER = "v2.0.0";
 var GH = { x: -1, y: -1, w: 0, h: 0 }; /* 作者GitHub徽章热区 */
 var CLR = { x: -1, y: -1, w: 0, h: 0 }; /* 选关页"清空成绩"按钮热区 */
 function clamp(v, a, b) {
@@ -955,8 +955,8 @@ function loadLevel(i, fresh) {
       ents.push({
         k: e.k,
         flying: e.k === "raven" || e.k === "bird",
-        w: e.k === "leopard" ? 30 : e.k === "cannon" ? 36 : 26,
-        h: e.k === "leopard" ? 24 : e.k === "cannon" ? 30 : 22,
+        w: e.k === "leopard" ? 37 : e.k === "cannon" ? 42 : 33,
+        h: e.k === "leopard" ? 30 : e.k === "cannon" ? 34 : 28,
         x: e.x * T + T / 2 - 13,
         y: e.y * T,
         vy: 0,
@@ -4293,7 +4293,7 @@ function buildWorld3D() {
       else if (e.k === "miniboss") mm = buildMiniBoss();
       else if (e.k === "cannon") mm = buildCannon();
       if (mm) {
-        mm.scale.setScalar(e.k === "miniboss" ? 1.5 : e.k === "cannon" ? 2.3 : 1.7);
+        mm.scale.setScalar(e.k === "miniboss" ? 1.5 : e.k === "cannon" ? 2.3 : 2.3);
         dynGroup.add(mm);
         e.mesh = mm;
       }
@@ -4464,7 +4464,7 @@ function sync3D() {
         for (var li = 0; li < lgs.length; li++) lgs[li].rotation.x = li % 2 === 0 ? sw2 : -sw2;
       }
       if (e.dead) {
-        e.mesh.scale.y = Math.max(0.15, 1.7 * (e.squash / 0.4));
+        e.mesh.scale.y = Math.max(0.15, 2.3 * (e.squash / 0.4));
       }
     } else if (e.k === "raven") {
       var fl = Math.sin(e.t * 18) * 0.8;
@@ -5532,7 +5532,7 @@ function drawSelect2D(c) {
   }
   c.fillStyle = "rgba(255,255,255,0.5)";
   c.font = "12px " + FONT;
-  c.fillText("每关终点都有 GPT 老板守关 · 5-4 Anthropic 机房决战 · " + VER, W / 2, H - 24);
+  c.fillText("每关终点都有 GPT 老板守关 · 终章 Anthropic 机房决战 · 跳刺重制 " + VER, W / 2, H - 24);
   /* 清空最佳/最高分 按钮 */
   if (
     GS.hs > 0 ||

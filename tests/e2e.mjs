@@ -350,8 +350,8 @@ try {
     GS.combo=5;rewardComboMilestone(0,0);
     GS.combo=8;rewardComboMilestone(0,0);
     out.bugs.comboRewards={time:GS.time,score:GS.score,bonus:GS.sBonus,lives:GS.lives,star:PL.star};
-    loadLevel(13,true); out.bugs.level42Lava=Array.from(tiles).filter(function(c){return c===11;}).length;
-    out.bugs.level44Flag=LEVELS[15].flagX;
+    loadLevel(3,true); out.bugs.level42Lava=Array.from(tiles).filter(function(c){return c===11;}).length;
+    out.bugs.level44Flag=LEVELS[3].flagX;
     /* —— 自动模式已移除:改为“无作弊烟雾验证”——测试内置反射机器人(不属于游戏本体) —— */
     out.routes = [];
     var routeKeyState = {};
@@ -530,7 +530,7 @@ try {
     out.bugs.verticalPriority={solidFirst:sweepDown([2,9,12]),oneWayFirst:sweepDown([9,12,2]),springFirst:sweepDown([12,2,9])};
     prepareVerticalSweep();setTile(10,10,9);setTile(10,9,12);setTile(10,8,2);setTile(10,6,2);PL.prevY=11*T;PL.y=4*T;PL.vy=-1200;collideY(PL);out.bugs.upwardSweep={y:PL.y,expected:9*T+0.01,vy:PL.vy,hitT:PL.hitT,ground:PL.ground,springK:PL.springK};
     loadLevel(0,true);var springEntry=null;for(var wk in worldBlocks){if(!springEntry&&worldBlocks[wk].kind==="spring")springEntry={key:wk,wb:worldBlocks[wk]};}function boundsResult(entry){if(!entry)return null;var parts=entry.key.split(","),ty=+parts[1],bb=new THREE.Box3().setFromObject(entry.wb.g);return {bottom:bb.min.y,expectedBottom:worldY((ty+1)*T),top:bb.max.y,expectedTop:worldY(ty*T)};}out.bugs.springBounds=boundsResult(springEntry);loadLevel(1,true);var pipeEntry=null;for(var pk in worldBlocks){if(!pipeEntry&&worldBlocks[pk].kind==="pipe")pipeEntry={key:pk,wb:worldBlocks[pk]};}out.bugs.pipeBounds=boundsResult(pipeEntry);
-    loadLevel(15,true);GS.state="play"; var goal=curLV.flagX*T+T/2; PL.x=goal-PL.w/2;PL.y=11*T;PL.vx=0;PL.vy=0;PL.ground=true;updatePlayer(1/60);out.bugs.goalState=GS.state;
+    loadLevel(3,true);GS.state="play"; var goal=curLV.flagX*T+T/2; PL.x=goal-PL.w/2;PL.y=11*T;PL.vx=0;PL.vy=0;PL.ground=true;updatePlayer(1/60);out.bugs.goalState=GS.state;
     /* —— v1.9 趣味性回归:金蛋/坐地重击/蹬墙跳 —— */
     out.fun = {};
     out.fun.eggsPerLevel = LEVELS.map(function (lv) {
@@ -573,7 +573,7 @@ try {
   };
   const near = (actual, expected, tolerance = 0.01) => Math.abs(actual - expected) <= tolerance;
   check(result.initial.three && result.initial.calf && !result.initial.error, "game failed to initialize");
-  check(result.levels.length === 32, `expected 32 levels, got ${result.levels.length}`);
+  check(result.levels.length === 9, `expected 9 levels, got ${result.levels.length}`);
   for (const level of result.levels) check(!level.error && !level.thrown, `level ${level.i + 1} failed to render`);
   check(result.bugs.bigCoinPreserved, "large coin metadata was lost");
   check(near(result.bugs.bump.delta, 0), "used item box moved away from its tile");
@@ -635,7 +635,7 @@ try {
   check(result.bugs.shots && result.bugs.shots.bossVulnHit, "shots did not hurt the vulnerable boss");
   /* v1.9+ 趣味性功能断言 */
   check(
-    result.fun && result.fun.eggsPerLevel.length === 32 && result.fun.eggsPerLevel.every((n) => n === 1),
+    result.fun && result.fun.eggsPerLevel.length === 9 && result.fun.eggsPerLevel.every((n) => n === 1),
     "each level should contain exactly 1 golden egg",
   );
   check(result.fun?.poundBrick?.broken, "ground pound failed to break a brick");
@@ -657,7 +657,7 @@ try {
       JSON.stringify(failedSmoke.map((r) => ({ n: r.name, cur: r.currentTile, max: r.maxTile, d: r.deaths }))),
     );
   console.log(
-    `Edge E2E: levels ${result.levels.length}/32, bot-clearable ${result.routes.filter((route) => route.passed).length}/${result.routes.length}, boss ${result.bugs.bossTriggered ? "OK" : "MISSING"}`,
+    `Edge E2E: levels ${result.levels.length}/${result.levels.length}, bot-clearable ${result.routes.filter((route) => route.passed).length}/${result.routes.length}, boss ${result.bugs.bossTriggered ? "OK" : "MISSING"}`,
   );
   console.log("VIEW:", JSON.stringify(result.bugs.view), "BOSSTRACE:", JSON.stringify(result.bugs.bossTrace));
   if (failures.length) throw new Error(`E2E failures:\n- ${failures.join("\n- ")}`);
