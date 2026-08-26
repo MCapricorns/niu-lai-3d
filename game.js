@@ -1747,7 +1747,12 @@ function bumpBlock(tx, ty) {
     refreshWorldBlock(tx, ty);
   } else if (c === 2) {
     sBump();
-    bumps.push({ x: tx, y: ty, t: 0, sp: false });
+    /* 实心块已并入地形网格:弹跳用瞬态幽灵方块表现 */
+    var ghost = ME.ghostBox(THEME3[curLV.theme].solid);
+    var gc2 = tileCenter(tx, ty);
+    ghost.position.set(gc2[0], gc2[1], 0);
+    dynGroup.add(ghost);
+    bumps.push({ x: tx, y: ty, t: 0, sp: false, g0: gc2[1], ghost: ghost });
   }
 }
 function triggerCrumble(tx, ty) {
@@ -3641,10 +3646,6 @@ function buildItem3D(k) {
 var dynGroup = typeof THREE !== "undefined" && scene ? new THREE.Group() : null;
 if (dynGroup) scene.add(dynGroup);
 var worldBlocks = {};
-var instBox = null,
-  instGrass = null,
-  instSpike = null,
-  instLava = null;
 var instMatLava = null;
 var qLabelSprites = [];
 var pMax = 420;
@@ -3932,227 +3933,28 @@ function buildWorld3D() {
   if (!THREE_OK) return;
   clearDyn();
   var tt = THEME3[curLV.theme];
-  var i,
-    j,
-    spikeCount2 = 0;
-  for (i = 0; i < curLV.w * 15; i++) {
-    var c2 = tiles[i];
-    if (c2 === 10) spikeCount2++;
-  }
-  var boxCount = 0,
-    grassCount = 0;
-  for (i = 0; i < curLV.w * 15; i++) {
-    var c3 = tiles[i];
-    if (
-      c3 === 1 ||
-      c3 === 2 ||
-      c3 === 3 ||
-      c3 === 4 ||
-      c3 === 5 ||
-      c3 === 6 ||
-      c3 === 7 ||
-      c3 === 8 ||
-      c3 === 9 ||
-      c3 === 14 ||
-      c3 === 17
-    )
-      boxCount++;
-    if (c3 === 1) grassCount++;
-  }
-  var texC = document.createElement("canvas");
-  texC.width = 64;
-  texC.height = 64;
-  var texG = texC.getContext("2d");
-  texG.fillStyle = "#ffffff";
-  texG.fillRect(0, 0, 64, 64);
-  texG.strokeStyle = "rgba(0,0,0,0.30)";
-  texG.lineWidth = 3;
-  texG.strokeRect(1.5, 1.5, 61, 61);
-  texG.beginPath();
-  texG.moveTo(0, 32);
-  texG.lineTo(64, 32);
-  texG.moveTo(32, 0);
-  texG.lineTo(32, 32);
-  texG.moveTo(16, 32);
-  texG.lineTo(16, 64);
-  texG.moveTo(48, 32);
-  texG.lineTo(48, 64);
-  texG.stroke();
-  var texB = new THREE.CanvasTexture(texC);
-  texB.wrapS = texB.wrapT = THREE.RepeatWrapping;
-  var matI = new THREE.MeshLambertMaterial({ color: 0xffffff, map: texB });
-  var boxGeo = new THREE.BoxGeometry(3.2, 3.2, 2.6);
-  instBox = new THREE.InstancedMesh(boxGeo, matI, Math.max(1, boxCount));
-  instBox.castShadow = true;
-  instBox.receiveShadow = true;
-  var grGeo = new THREE.BoxGeometry(3.22, 0.4, 2.62);
-  instGrass = new THREE.InstancedMesh(
-    grGeo,
-    new THREE.MeshLambertMaterial({ color: 0xffffff }),
-    Math.max(1, grassCount),
-  );
-  instGrass.receiveShadow = true;
-  var spGeo = new THREE.ConeGeometry(1.2, 3.2, 4);
-  instSpike = new THREE.InstancedMesh(
-    spGeo,
-    new THREE.MeshLambertMaterial({ color: 0xffffff }),
-    Math.max(1, spikeCount2),
-  );
-  instSpike.castShadow = true;
-  var lavaCount = 0;
-  for (i = 0; i < curLV.w * 15; i++) {
-    if (tiles[i] === 11) lavaCount++;
-  }
-  instMatLava = new THREE.MeshLambertMaterial({ color: 0xff6a1f, emissive: 0xff3300, emissiveIntensity: 0.7 });
-  instLava = new THREE.InstancedMesh(new THREE.BoxGeometry(3.2, 3.2, 2.6), instMatLava, Math.max(1, lavaCount));
-  var bi = 0,
-    gi = 0,
-    si = 0,
-    li = 0;
-  var m4 = new THREE.Matrix4(),
-    q4 = new THREE.Quaternion(),
-    v3 = new THREE.Vector3(),
-    s3 = new THREE.Vector3();
-  for (var ty = 0; ty < 15; ty++) {
-    for (var tx = 0; tx < curLV.w; tx++) {
-      var c = tiles[ty * curLV.w + tx];
-      var p = tileCenter(tx, ty);
-      if (c === 1) {
-        m4.compose(new THREE.Vector3(p[0], p[1], 0), q4, new THREE.Vector3(1, 1, 1));
-        instBox.setMatrixAt(bi, m4);
-        instBox.setColorAt(bi, ccol(tt.dirt));
-        bi++;
-        if (ty > 0 && tiles[(ty - 1) * curLV.w + tx] !== 1) {
-          m4.compose(new THREE.Vector3(p[0], p[1] + 1.72, 0), q4, new THREE.Vector3(1, 0.22, 1));
-          instGrass.setMatrixAt(gi, m4);
-          instGrass.setColorAt(gi, ccol(tt.grass));
-          gi++;
-        }
-      } else if (c === 2) {
-        m4.compose(new THREE.Vector3(p[0], p[1], 0), q4, new THREE.Vector3(1, 1, 1));
-        instBox.setMatrixAt(bi, m4);
-        instBox.setColorAt(bi, ccol(tt.solid));
-        bi++;
-      } else if (c === 3) {
-        m4.compose(new THREE.Vector3(p[0], p[1], 0), q4, new THREE.Vector3(1, 1, 1));
-        instBox.setMatrixAt(bi, m4);
-        instBox.setColorAt(bi, ccol(tt.brick));
-        worldBlocks[tx + "," + ty] = { kind: "brick", idx: bi };
-        bi++;
-      } else if (c === 4 || c === 5 || c === 6 || c === 7) {
-        m4.compose(new THREE.Vector3(p[0], p[1], 0), q4, new THREE.Vector3(1, 1, 1));
-        instBox.setMatrixAt(bi, m4);
-        instBox.setColorAt(bi, ccol(tt.q));
-        var lbl = makeTextSprite(c === 4 ? "?" : c === 5 ? "奶" : c === 6 ? "★" : "铃", 1.3, "#fff");
-        lbl.position.set(p[0], p[1] - 0.3, 1.45);
-        lbl.userData.bx = tx;
-        lbl.userData.by = ty;
-        dynGroup.add(lbl);
-        qLabelSprites.push(lbl);
-        worldBlocks[tx + "," + ty] = { kind: "q", idx: bi, lbl: lbl };
-        bi++;
-      } else if (c === 8) {
-        m4.compose(new THREE.Vector3(p[0], p[1], 0), q4, new THREE.Vector3(1, 1, 1));
-        instBox.setMatrixAt(bi, m4);
-        instBox.setColorAt(bi, ccol(0x9a7a50));
-        worldBlocks[tx + "," + ty] = { kind: "used", idx: bi };
-        bi++;
-      } else if (c === 9) {
-        m4.compose(new THREE.Vector3(p[0], p[1] + 1.12, 0), q4, new THREE.Vector3(1, 0.3, 1));
-        instBox.setMatrixAt(bi, m4);
-        instBox.setColorAt(bi, ccol(tt.plat));
-        bi++;
-      } else if (c === 10) {
-        /* Fill the hazard tile from the supporting block to the collision tip. */
-        m4.compose(new THREE.Vector3(p[0], p[1], 0), q4, new THREE.Vector3(1, 1, 1));
-        instSpike.setMatrixAt(si, m4);
-        instSpike.setColorAt(si, ccol(tt.spike));
-        si++;
-      } else if (c === 11) {
-        m4.compose(new THREE.Vector3(p[0], p[1], 0), q4, new THREE.Vector3(1, 1, 1));
-        instLava.setMatrixAt(li, m4);
-        li++;
-      } else if (c === 17) {
-        /* 旗门铁柱:轰杀守关 GPT 老板后炸开 */
-        m4.compose(new THREE.Vector3(p[0], p[1], 0), q4, new THREE.Vector3(1, 1, 1));
-        instBox.setMatrixAt(bi, m4);
-        instBox.setColorAt(bi, ccol(0x454b5e));
-        worldBlocks[tx + "," + ty] = { kind: "gate", idx: bi };
-        bi++;
-      } else if (c === 13 || c === 14) {
-        if (c === 13) {
-          var pg = new THREE.Group();
-          var neck = cyl(1.15, 1.15, 2.7, 0x4aa03f, 14);
-          neck.position.y = -1.65;
-          pg.add(neck);
-          var rim = cyl(1.3, 1.3, 0.5, 0x4aa03f, 14);
-          rim.position.y = -0.35;
-          pg.add(rim);
-          var rimTop = cyl(1.45, 1.45, 0.42, 0x59c14d, 14);
-          rimTop.position.y = 0.05;
-          pg.add(rimTop);
-          pg.position.set(p[0], p[1] + 1.34, 0);
-          dynGroup.add(pg);
-          worldBlocks[tx + "," + ty] = { kind: "pipe", g: pg };
-        } else {
-          var pg2 = new THREE.Group();
-          var bodyT = cyl(1.15, 1.15, 3.2, 0x4aa03f, 14);
-          bodyT.position.y = 0;
-          pg2.add(bodyT);
-          var sheen = cyl(1.16, 1.16, 0.3, 0x6ed15e, 14);
-          sheen.position.set(0, 0.8, 0);
-          pg2.add(sheen);
-          pg2.position.set(p[0], p[1], 0);
-          dynGroup.add(pg2);
-        }
-      } else if (c === 12) {
-        var sp = new THREE.Group();
-        var base = box(1.9, 0.9, 1.9, 0xc4412f);
-        base.position.y = -0.35;
-        sp.add(base);
-        var top = box(2.2, 0.7, 2.2, 0x5ec04f);
-        top.position.y = 0.35;
-        sp.add(top);
-        var pad = box(1.3, 0.5, 1.3, 0xd8d8d8);
-        pad.position.y = 0.85;
-        sp.add(pad);
-        sp.scale.y = 1.68;
-        sp.position.set(p[0], p[1] - 0.25, 0);
-        dynGroup.add(sp);
-        worldBlocks[tx + "," + ty] = { kind: "spring", g: sp, baseScaleY: 1.68 };
-      } else if (c === 16) {
-        var cg = new THREE.Group();
-        var plank = box(3.05, 0.44, 2.45, tt.plat, 0.03);
-        cg.add(plank);
-        var crack1 = box(0.09, 0.06, 2.5, 0x4a3528, 0);
-        crack1.position.set(-0.65, 0.25, 0);
-        crack1.rotation.z = 0.38;
-        cg.add(crack1);
-        var crack2 = crack1.clone();
-        crack2.position.x = 0.7;
-        crack2.rotation.z = -0.34;
-        cg.add(crack2);
-        cg.position.set(p[0], p[1] + 1.38, 0);
-        dynGroup.add(cg);
-        worldBlocks[tx + "," + ty] = { kind: "crumble", g: cg, baseX: p[0] };
-      }
-    }
-  }
-  instBox.count = bi;
-  instGrass.count = gi;
-  instSpike.count = si;
-  instLava.count = li;
-  instBox.instanceMatrix.needsUpdate = true;
-  instGrass.instanceMatrix.needsUpdate = true;
-  instSpike.instanceMatrix.needsUpdate = true;
-  instLava.instanceMatrix.needsUpdate = true;
-  if (instBox.instanceColor) instBox.instanceColor.needsUpdate = true;
-  if (instGrass.instanceColor) instGrass.instanceColor.needsUpdate = true;
-  if (instSpike.instanceColor) instSpike.instanceColor.needsUpdate = true;
-  dynGroup.add(instBox);
-  dynGroup.add(instGrass);
-  dynGroup.add(instSpike);
-  dynGroup.add(instLava);
+  /* 地形合并网格 + 动态块由地图引擎一次产出 */
+  var built = ME.build({
+    tiles: tiles,
+    w: curLV.w,
+    h: curLV.h,
+    theme: {
+      dirt: tt.dirt,
+      grass: tt.grass,
+      brick: tt.brick,
+      solid: tt.solid,
+      q: tt.q,
+      plat: tt.plat,
+      lava: tt.lava,
+      spike: tt.spike,
+    },
+    dynGroup: dynGroup,
+    worldBlocks: worldBlocks,
+    qLabelSprites: qLabelSprites,
+    makeTextSprite: makeTextSprite,
+  });
+  instMatLava = built.lavaMat;
+  var i, j;
   /* —— 旗杆:从地面立起来 + 牛头骨黑旗(海报同款) —— */
   if (curLV.flagX > 0) {
     var fpx = worldX(curLV.flagX * T + T / 2);
@@ -4281,32 +4083,27 @@ function buildWorld3D() {
     }
   }
 }
-var _zeroM4 = typeof THREE !== "undefined" ? new THREE.Matrix4().makeScale(0.0001, 0.0001, 0.0001) : null;
 function refreshWorldBlock(tx, ty) {
-  if (!THREE_OK || !instBox) return;
+  if (!THREE_OK) return;
   var key = tx + "," + ty;
   if (!worldBlocks[key]) return;
   var wb = worldBlocks[key];
-  if (wb.kind === "brick" && wb.idx !== undefined) {
-    instBox.setMatrixAt(wb.idx, _zeroM4);
-    instBox.instanceMatrix.needsUpdate = true;
-  } else if (wb.kind === "q") {
+  if (wb.kind === "brick" || wb.kind === "gate") {
+    /* 砖拆毁/旗门轰开:移除网格 */
+    if (wb.g) {
+      dynGroup.remove(wb.g);
+      ME.disposeMesh(wb.g);
+    }
+    delete worldBlocks[key];
+  } else if (wb.kind === "q" || wb.kind === "used") {
+    /* 已用道具盒:仅改色,碰撞与视觉保持一致 */
     if (wb.lbl) {
       dynGroup.remove(wb.lbl);
       var ii = qLabelSprites.indexOf(wb.lbl);
       if (ii >= 0) qLabelSprites.splice(ii, 1);
+      wb.lbl = null;
     }
-    if (wb.idx !== undefined) {
-      instBox.setColorAt(wb.idx, ccol(0x9a7a50));
-      if (instBox.instanceColor) instBox.instanceColor.needsUpdate = true;
-    }
-  } else if (wb.kind === "used" && wb.idx !== undefined) {
-    instBox.setColorAt(wb.idx, ccol(0x9a7a50));
-    if (instBox.instanceColor) instBox.instanceColor.needsUpdate = true;
-  } else if (wb.kind === "gate" && wb.idx !== undefined) {
-    /* 旗门轰开:该实例矩阵归零隐藏 */
-    instBox.setMatrixAt(wb.idx, _zeroM4);
-    instBox.instanceMatrix.needsUpdate = true;
+    if (wb.g && wb.g.material) wb.g.material.color.setHex(0x9a7a50);
   }
 }
 function spawnBoss3D() {
@@ -4320,25 +4117,28 @@ function sync3D() {
   if (!THREE_OK) return;
   var gg = GS;
   /* 顶块弹跳动画 */
-  if (bumps.length && instBox && instBox.instanceMatrix) {
-    var _mB = new THREE.Matrix4(),
-      _pB = new THREE.Vector3(),
-      _qB = new THREE.Quaternion(),
-      _sB = new THREE.Vector3();
+  if (bumps.length) {
     for (var bi3 = bumps.length - 1; bi3 >= 0; bi3--) {
       var bp = bumps[bi3];
       bp.t = (bp.t || 0) + 1 / 60;
-      var wb = worldBlocks[bp.x + "," + bp.y];
-      if (wb && wb.idx !== undefined) {
-        instBox.getMatrixAt(wb.idx, _mB);
-        _mB.decompose(_pB, _qB, _sB);
-        var lift = Math.sin((Math.min(bp.t, 0.22) / 0.22) * Math.PI) * 0.7;
-        _pB.y += lift;
-        _mB.compose(_pB, _qB, _sB);
-        instBox.setMatrixAt(wb.idx, _mB);
-        instBox.instanceMatrix.needsUpdate = true;
+      var lift = Math.sin((Math.min(bp.t, 0.22) / 0.22) * Math.PI) * 0.7;
+      if (bp.ghost) {
+        bp.ghost.position.y = bp.g0 + lift;
+      } else {
+        var wb = worldBlocks[bp.x + "," + bp.y];
+        if (wb && wb.g && wb.baseY !== undefined) {
+          wb.g.position.y = wb.baseY + lift;
+        }
       }
       if (bp.t > 0.22) {
+        if (bp.ghost) {
+          dynGroup.remove(bp.ghost);
+          ME.disposeMesh(bp.ghost);
+          bp.ghost = null;
+        } else {
+          var wb2 = worldBlocks[bp.x + "," + bp.y];
+          if (wb2 && wb2.g && wb2.baseY !== undefined) wb2.g.position.y = wb2.baseY;
+        }
         bumps.splice(bi3, 1);
       }
     }

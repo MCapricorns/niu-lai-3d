@@ -4,9 +4,9 @@
   "private": true,
   "description": "A zero-runtime-dependency Three.js platform game.",
   "scripts": {
-    "format": "prettier --write game.js levels.js tests/e2e.mjs index.html README.md",
-    "format:check": "prettier --check game.js levels.js tests/e2e.mjs index.html README.md",
-    "lint": "eslint game.js levels.js tests/e2e.mjs",
+    "format": "prettier --write game.js levels.js mapengine.js tests/e2e.mjs index.html README.md",
+    "format:check": "prettier --check game.js levels.js mapengine.js tests/e2e.mjs index.html README.md",
+    "lint": "eslint game.js levels.js mapengine.js tests/e2e.mjs",
     "check": "npm run format:check && npm run lint",
     "test:e2e": "node tests/e2e.mjs",
     "test": "npm run test:e2e"

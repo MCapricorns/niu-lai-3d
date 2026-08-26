@@ -46,13 +46,14 @@ export default [
     ignores: ["three.min.js"],
   },
   {
-    files: ["game.js", "levels.js"],
+    files: ["game.js", "levels.js", "mapengine.js"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "script",
       globals: {
         ...globals.browser,
         THREE: "readonly",
+        ME: "readonly",
       },
     },
     linterOptions: sharedOptions,

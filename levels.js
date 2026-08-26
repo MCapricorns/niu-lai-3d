@@ -21,6 +21,7 @@
  * - 每关藏 1 颗 g.egg(x,y) 金蛋(危险位置,捡齐 20 颗大满贯)。
  */
 window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
+  var T = window.ME.TILE; /* 瓦片语义与地图引擎共享见 mapengine.js */
   /* ---------- 关卡数据 ---------- */
   function LV(w, name, theme) {
     this.w = w;
@@ -46,33 +47,33 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     for (var x = x1; x <= x2; x++) for (var y = y1; y <= y2; y++) this.set(x, y, c);
   };
   LV.prototype.walls = function () {
-    this.fill(0, 0, 0, 14, 2);
-    this.fill(this.w - 1, this.w - 1, 0, 14, 2);
+    this.fill(0, 0, 0, 14, T.SOLID);
+    this.fill(this.w - 1, this.w - 1, 0, 14, T.SOLID);
   };
   LV.prototype.ground = function (x1, x2) {
-    this.fill(x1, x2, 12, 14, 1);
+    this.fill(x1, x2, 12, 14, T.GROUND);
   };
   LV.prototype.groundAll = function () {
     this.ground(0, this.w - 1);
   };
   LV.prototype.pit = function (x1, x2) {
-    this.fill(x1, x2, 10, 14, 0);
+    this.fill(x1, x2, 10, 14, T.EMPTY);
   };
   /* 实心高台:从 topRow 到 11 行的实心柱群(顶面即 topRow 行) */
   LV.prototype.mesa = function (x1, x2, topRow) {
-    this.fill(x1, x2, topRow, 11, 2);
+    this.fill(x1, x2, topRow, 11, T.SOLID);
   };
   LV.prototype.brick = function (x, y, n) {
-    for (var i = 0; i < n; i++) this.set(x + i, y, 3);
+    for (var i = 0; i < n; i++) this.set(x + i, y, T.BRICK);
   };
   LV.prototype.q = function (x, y, k) {
-    this.set(x, y, k === 1 ? 5 : k === 2 ? 6 : k === 3 ? 7 : 4);
+    this.set(x, y, k === 1 ? T.QMILK : k === 2 ? T.QSTAR : k === 3 ? T.QBELL : T.QCOIN);
   };
   LV.prototype.plat = function (x, y, n) {
-    for (var i = 0; i < n; i++) this.set(x + i, y, 9);
+    for (var i = 0; i < n; i++) this.set(x + i, y, T.PLAT);
   };
   LV.prototype.solid = function (x, y1, y2) {
-    this.fill(x, x, y1, y2, 2);
+    this.fill(x, x, y1, y2, T.SOLID);
   };
   LV.prototype.coin = function (x, y) {
     this.coins.push({ x: x, y: y, t: Math.random() * TAU });
@@ -102,38 +103,38 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     this.ent({ k: "bird", x: x, y: y });
   };
   LV.prototype.spring = function (x, y) {
-    this.set(x, y === undefined ? 12 : y, 12);
+    this.set(x, y === undefined ? 12 : y, T.SPRING);
   };
   LV.prototype.spike = function (x, n) {
     this.spikeAt(x, 12, n);
   };
   LV.prototype.spikeAt = function (x, y, n) {
-    for (var i = 0; i < n; i++) this.set(x + i, y, 10);
+    for (var i = 0; i < n; i++) this.set(x + i, y, T.SPIKE);
   };
   LV.prototype.lava = function (x, n) {
     for (var i = 0; i < n; i++) {
-      this.set(x + i, 12, 11);
-      this.set(x + i, 13, 11);
-      this.set(x + i, 14, 11);
+      this.set(x + i, 12, T.LAVA);
+      this.set(x + i, 13, T.LAVA);
+      this.set(x + i, 14, T.LAVA);
     }
   };
   LV.prototype.pipe = function (x, h) {
     var top = 12 - h;
-    this.set(x, top, 13);
-    for (var y = top + 1; y <= 12; y++) this.set(x, y, 14);
+    this.set(x, top, T.PIPETOP);
+    for (var y = top + 1; y <= 12; y++) this.set(x, y, T.PIPEBODY);
   };
   LV.prototype.cannon = function (x, y) {
     this.ent({ k: "cannon", x: x, y: y === undefined ? 11.25 : y });
   };
   /* 旗门:守关老板死亡前封住旗杆(5..11 行铁柱,轰不开跳不过) */
   LV.prototype.gate = function (x) {
-    for (var y = 5; y <= 11; y++) this.set(x, y, 17);
+    for (var y = 5; y <= 11; y++) this.set(x, y, T.GATE);
   };
   LV.prototype.flag = function (x) {
     this.flagX = x;
     this.flagY = 8;
-    for (var y = 8; y <= 11; y++) this.set(x, y, 15);
-    this.set(x, 12, 2);
+    for (var y = 8; y <= 11; y++) this.set(x, y, T.FLAG);
+    this.set(x, 12, T.SOLID);
     this.gate(x - 2); /* 旗门与旗杆绑定生成,保证守关 Boss 必打 */
   };
   LV.prototype.mplat = function (x1, y1, x2, y2) {
@@ -141,7 +142,7 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
   };
   LV.prototype.cr = function (x, n, y) {
     var ry = y === undefined ? 11 : y;
-    for (var i = 0; i < n; i++) this.set(x + i, ry, 16);
+    for (var i = 0; i < n; i++) this.set(x + i, ry, T.CRUMBLE);
   }; /* 碎板:踩上0.75秒塌 */
   LV.prototype.bigc = function (x, y, n) {
     n = n || 1;
@@ -154,9 +155,9 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
   /* 卵藏地窖:地面开洞(10..13 行挖空,14 行铺底)再盖上砖盖,
      "坐地重击"砸穿盖板跳进地窖掏宝,2 层高轻松跳出 */
   LV.prototype.cellar = function (x1, x2, floorY) {
-    this.fill(x1, x2, 10, 12, 0);
-    this.fill(x1, x2, floorY === undefined ? 13 : floorY, floorY === undefined ? 13 : floorY, 1);
-    this.fill(x1, x2, 11, 11, 3);
+    this.fill(x1, x2, 10, 12, T.EMPTY);
+    this.fill(x1, x2, floorY === undefined ? 13 : floorY, floorY === undefined ? 13 : floorY, T.GROUND);
+    this.fill(x1, x2, 11, 11, T.BRICK);
   };
 
   var LEVELS = [];

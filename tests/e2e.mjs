@@ -320,7 +320,7 @@ try {
       var qx=q%curLV.w,qy=Math.floor(q/curLV.w); bumpBlock(qx,qy);
       var wb=worldBlocks[qx+","+qy], mat=new THREE.Matrix4(), pos=new THREE.Vector3(), quat=new THREE.Quaternion(), sc=new THREE.Vector3();
       for(var n=0;n<20;n++) sync3D();
-      if(wb&&wb.idx!==undefined){instBox.getMatrixAt(wb.idx,mat);mat.decompose(pos,quat,sc);out.bugs.bump={actualY:pos.y,expectedY:tileCenter(qx,qy)[1],delta:pos.y-tileCenter(qx,qy)[1]};}
+      if(wb&&wb.g){out.bugs.bump={actualY:wb.g.position.y,expectedY:tileCenter(qx,qy)[1],delta:wb.g.position.y-tileCenter(qx,qy)[1]};}
     }
     out.bugs.lengths=LEVELS.map(function(lv){return lv.w;});
     var maxLavaRun=0;
