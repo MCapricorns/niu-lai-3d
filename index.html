@@ -118,7 +118,11 @@
         左手移动；右手跳跃、冲刺、重击。所有间距都按最窄手机
         （320px）保留，避免按钮彼此遮挡或压住选关页。
       */
-      @media (pointer: coarse) and (orientation: portrait) {
+      /*
+        按视口尺寸而不是 pointer: coarse 判断：少数 Chromium WebView
+        会启用触摸事件却仍报告 fine pointer，按几何条件才能稳定避开重叠。
+      */
+      @media (max-width: 600px) and (orientation: portrait) {
         #wrap {
           align-items: flex-start;
           box-sizing: border-box;
@@ -162,7 +166,7 @@
           font-size: 16px;
         }
       }
-      @media (pointer: coarse) and (orientation: portrait) and (max-width: 320px) {
+      @media (max-width: 320px) and (orientation: portrait) {
         .tbtn {
           width: 56px;
           height: 56px;
