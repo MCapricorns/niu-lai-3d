@@ -306,7 +306,14 @@ try {
   }
   await sleep(500);
   const result = await evaluate(`(function(){
-    var out={initial:{state:GS.state,three:THREE_OK,error:_errMsg,calf:!!mCalf,version:VER},levels:[],bugs:{}};
+    var out={
+      initial:{state:GS.state,three:THREE_OK,error:_errMsg,calf:!!mCalf,version:VER},
+      levels:[],
+      bugs:{},
+      profiles:LEVELS.map(function(lv){
+        return {title:lv.profile&&lv.profile.title,motif:lv.profile&&lv.profile.motif,difficulty:lv.profile&&lv.profile.difficulty};
+      })
+    };
     for(var i=0;i<LEVELS.length;i++){
       _errMsg="";
       try{ loadLevel(i,true); GS.state="pause"; render(); out.levels.push({i:i,name:curLV.name,theme:curLV.theme,error:_errMsg,calf:!!mCalf,children:dynGroup.children.length}); }
@@ -567,6 +574,89 @@ try {
     collideY(PL);out.fun.poundLand={ground:PL.ground,pound:!!PL.pounding};
     return out;
   })()`);
+  /*
+   * The game itself is landscape, but portrait phones need a usable selector
+   * and separated touch zones. Exercise both canvas hit regions and the CSS
+   * layout in Chromium's touch viewport.
+   */
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await send("Emulation.setTouchEmulationEnabled", { enabled: true, configuration: "mobile" });
+  await sleep(100);
+  const portraitUi = await evaluate(`(function(){
+    var td=document.getElementById("touch");
+    touchUI=td;
+    td.classList.add("touch-enabled");
+    touchControlsVisible=false;
+    GS.selIdx=0;
+    GS.state="select";
+    syncTouchControls();
+    render();
+    var railCount=SEL_UI.nodes.length;
+    var startBounds={x:SEL_UI.start.x,y:SEL_UI.start.y,w:SEL_UI.start.w,h:SEL_UI.start.h};
+    function tap(box){
+      var rect=cv.getBoundingClientRect();
+      cv.dispatchEvent(new PointerEvent("pointerdown",{
+        clientX:rect.left+(box.x+box.w/2)*rect.width/W,
+        clientY:rect.top+(box.y+box.h/2)*rect.height/H,
+        pointerType:"touch",
+        bubbles:true
+      }));
+    }
+    tap(SEL_UI.next);
+    var arrowWorked=GS.selIdx===1;
+    render();
+    var target=SEL_UI.nodes[Math.min(4,SEL_UI.nodes.length-1)];
+    tap(target);
+    var nodeWorked=GS.selIdx===target.level;
+    render();
+    var chosen=GS.selIdx;
+    tap(SEL_UI.start);
+    var startWorked=GS.state==="play"&&GS.li===chosen;
+    GS.state="select";
+    syncTouchControls();
+    var hiddenOnSelect=!td.classList.contains("is-active");
+    GS.state="play";
+    syncTouchControls();
+    var shownInPlay=td.classList.contains("is-active");
+    var ids=["btnL","btnR","btnB","btnJ","btnP"];
+    var boxes=ids.map(function(id){
+      var b=document.getElementById(id).getBoundingClientRect();
+      return {id:id,left:b.left,top:b.top,right:b.right,bottom:b.bottom,width:b.width,height:b.height};
+    });
+    var overlaps=[];
+    for(var i=0;i<boxes.length;i++) for(var j=i+1;j<boxes.length;j++){
+      var a=boxes[i],b=boxes[j];
+      if(a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top) overlaps.push(a.id+"+"+b.id);
+    }
+    var canvasRect=cv.getBoundingClientRect();
+    GS.state="select";
+    syncTouchControls();
+    return {
+      viewport:{w:window.innerWidth,h:window.innerHeight,coarse:matchMedia("(pointer: coarse)").matches},
+      selector:{
+        railCount:railCount,
+        startBounds:startBounds,
+        arrowWorked:arrowWorked,
+        nodeWorked:nodeWorked,
+        startWorked:startWorked
+      },
+      controls:{
+        enabled:td.classList.contains("touch-enabled"),
+        hiddenOnSelect:hiddenOnSelect,
+        shownInPlay:shownInPlay,
+        overlaps:overlaps,
+        boxes:boxes
+      },
+      canvas:{top:canvasRect.top,width:canvasRect.width,height:canvasRect.height}
+    };
+  })()`);
+  await send("Emulation.clearDeviceMetricsOverride");
+  await send("Emulation.setTouchEmulationEnabled", { enabled: false });
   const failures = [];
   const check = (condition, message) => {
     if (!condition) failures.push(message);
@@ -574,6 +664,12 @@ try {
   const near = (actual, expected, tolerance = 0.01) => Math.abs(actual - expected) <= tolerance;
   check(result.initial.three && result.initial.calf && !result.initial.error, "game failed to initialize");
   check(result.levels.length === 9, `expected 9 levels, got ${result.levels.length}`);
+  check(
+    result.profiles.length === 9 &&
+      result.profiles.every((profile) => profile.title && profile.motif && profile.difficulty) &&
+      new Set(result.profiles.map((profile) => profile.motif)).size === result.profiles.length,
+    "each level should expose a distinct playable identity",
+  );
   for (const level of result.levels) check(!level.error && !level.thrown, `level ${level.i + 1} failed to render`);
   check(result.bugs.bigCoinPreserved, "large coin metadata was lost");
   check(near(result.bugs.bump.delta, 0), "used item box moved away from its tile");
@@ -650,6 +746,26 @@ try {
     check(!route.error, `smoke error in ${route.name}: ${route.error}`);
     check(route.maxTile > 5, `bot made no progress in ${route.name} (max ${route.maxTile})`);
   }
+  check(portraitUi.viewport.h > portraitUi.viewport.w, "portrait viewport was not applied");
+  check(portraitUi.selector.railCount === 9, "portrait selector did not expose every current level");
+  check(
+    portraitUi.selector.startBounds.w >= 250 && portraitUi.selector.startBounds.h >= 50,
+    "portrait selector start target is too small",
+  );
+  check(portraitUi.selector.arrowWorked, "selector next arrow did not change levels");
+  check(portraitUi.selector.nodeWorked, "selector level rail did not select a level");
+  check(portraitUi.selector.startWorked, "selector start button did not launch the chosen level");
+  check(portraitUi.controls.enabled, "touch controls were not initialized for portrait UI");
+  check(portraitUi.controls.hiddenOnSelect, "touch controls were visible over the selector");
+  check(portraitUi.controls.shownInPlay, "touch controls did not appear during play");
+  check(
+    portraitUi.controls.boxes.every((box) => box.width >= 50 && box.height >= 50),
+    "portrait touch target became too small",
+  );
+  check(
+    portraitUi.controls.overlaps.length === 0,
+    `portrait touch controls overlap: ${portraitUi.controls.overlaps.join(", ")}`,
+  );
   const failedSmoke = result.routes.filter((r) => !r.passed);
   if (failedSmoke.length)
     console.log(
@@ -660,6 +776,7 @@ try {
     `Edge E2E: levels ${result.levels.length}/${result.levels.length}, bot-clearable ${result.routes.filter((route) => route.passed).length}/${result.routes.length}, boss ${result.bugs.bossTriggered ? "OK" : "MISSING"}`,
   );
   console.log("VIEW:", JSON.stringify(result.bugs.view), "BOSSTRACE:", JSON.stringify(result.bugs.bossTrace));
+  console.log("PORTRAIT:", JSON.stringify(portraitUi));
   if (failures.length) throw new Error(`E2E failures:\n- ${failures.join("\n- ")}`);
 } catch (error) {
   testFailure = error;
