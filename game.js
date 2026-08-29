@@ -12,9 +12,16 @@ var W = 960,
   TAU = Math.PI * 2;
 var START_LIVES = 9;
 var FONT = '"ZCOOL KuaiLe","Microsoft YaHei",sans-serif';
-var VER = "v2.0.0";
+var VER = "v2.1.0";
 var GH = { x: -1, y: -1, w: 0, h: 0 }; /* 作者GitHub徽章热区 */
 var CLR = { x: -1, y: -1, w: 0, h: 0 }; /* 选关页"清空成绩"按钮热区 */
+/* 选关页热区：大卡片 + 翻页箭头 + 可扩展关卡轨道。 */
+var SEL_UI = {
+  prev: { x: -1, y: -1, w: 0, h: 0 },
+  next: { x: -1, y: -1, w: 0, h: 0 },
+  start: { x: -1, y: -1, w: 0, h: 0 },
+  nodes: [],
+};
 function clamp(v, a, b) {
   return v < a ? a : v > b ? b : v;
 }
@@ -568,11 +575,11 @@ window.addEventListener("keydown", function (e) {
     var mv = 0;
     if (e.code === "ArrowLeft") mv = -1;
     else if (e.code === "ArrowRight") mv = 1;
-    else if (e.code === "ArrowUp") mv = -4;
-    else if (e.code === "ArrowDown") mv = 4;
+    /* 大卡片选关：左右逐关，纵向按三关一组快速跳转。 */
+    else if (e.code === "ArrowUp") mv = -3;
+    else if (e.code === "ArrowDown") mv = 3;
     if (mv) {
-      GS.selIdx = (GS.selIdx + mv + LEVELS.length) % LEVELS.length;
-      sClick();
+      selectLevel(GS.selIdx + mv);
       e.preventDefault();
       return;
     }
@@ -619,9 +626,12 @@ function bindTouch(id, k, j) {
   el.addEventListener("mousedown", on);
   el.addEventListener("mouseup", off);
 }
+var touchUI = null,
+  touchControlsVisible = false;
 if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
   var td = document.getElementById("touch");
-  td.style.display = "block";
+  td.classList.add("touch-enabled");
+  touchUI = td;
   bindTouch("btnL", "left");
   bindTouch("btnR", "right");
   bindTouch("btnJ", "jump", true);
@@ -723,6 +733,22 @@ function isCleared(i) {
 function isUnlocked(i) {
   /* v1.10:全关卡开放,任意跳关游玩(通关标记保留用于 ✓ 显示) */
   return true;
+}
+function selectLevel(i) {
+  if (!LEVELS.length) return;
+  GS.selIdx = ((i % LEVELS.length) + LEVELS.length) % LEVELS.length;
+  sClick();
+}
+/*
+ * 选关、标题和结算页不需要占用手机拇指区。只在真正可以操控角色的
+ * 两种状态显示按键，竖屏时不会再有浮层盖住选关卡片。
+ */
+function syncTouchControls() {
+  if (!touchUI) return;
+  var active = GS.state === "play" || GS.state === "bossintro";
+  if (active === touchControlsVisible) return;
+  touchControlsVisible = active;
+  touchUI.classList.toggle("is-active", active);
 }
 function markCleared(i) {
   try {
@@ -3007,6 +3033,7 @@ function update(dt) {
   } else if (GS.state === "winseq") {
     handleWinseq(dt);
   }
+  syncTouchControls();
   if (GS.state === "play" || GS.state === "clear") {
     camX = clamp(lerp(camX, PL.x - W * 0.42, 1 - Math.pow(0.002, dt)), 0, curLV.w * T - W);
   }
@@ -5194,7 +5221,17 @@ function drawOverlays(c) {
     c.fillText(curLV.name, W / 2, 282);
     c.fillStyle = "#fff";
     c.font = "16px " + FONT;
-    c.fillText(GS.li === FINAL_LV ? "Anthropic 机房就在前面——让服务器冒烟!" : "冲呀——小心 GPT 老板守关!", W / 2, 330);
+    var introProfile = curLV.profile || {};
+    c.fillText(
+      GS.li === FINAL_LV
+        ? "Anthropic 机房就在前面——让服务器冒烟!"
+        : introProfile.challenge || "冲呀——小心 GPT 老板守关!",
+      W / 2,
+      326,
+    );
+    c.fillStyle = "rgba(255,255,255,0.72)";
+    c.font = "13px " + FONT;
+    c.fillText(introProfile.tip || "观察一次，再漂亮地通过。", W / 2, 350);
     c.globalAlpha = 1;
   }
   if (GS.state === "bossintro") {
@@ -5313,7 +5350,15 @@ function drawTitle2D(c) {
       hintText(c, "最高分 " + GS.hs, W / 2, 478, "14px " + FONT, "#ffd23f", "center");
     }
     if (eggFullBadge()) {
-      hintText(c, "🥚 金蛋大满贯 · 20/20 全图 GET!", W / 2, 502, "14px " + FONT, "#ffd23f", "center");
+      hintText(
+        c,
+        "🥚 金蛋大满贯 · " + eggCount() + "/" + LEVELS.length + " 全图 GET!",
+        W / 2,
+        502,
+        "14px " + FONT,
+        "#ffd23f",
+        "center",
+      );
     }
   } else {
     c.fillStyle = "#ffd23f";
@@ -5450,119 +5495,344 @@ function drawTitle2D(c) {
   c.restore();
   c.restore();
 }
-var SEL_COLS = 6,
-  SEL_CW = 150,
-  SEL_CH = 62,
-  SEL_GX = 10,
-  SEL_GY = 8;
-function selGridX0() {
-  return (W - (SEL_COLS * SEL_CW + (SEL_COLS - 1) * SEL_GX)) / 2;
+var SEL_PAGE_SIZE = 10;
+function setSelectHit(box, x, y, w, h) {
+  box.x = x;
+  box.y = y;
+  box.w = w;
+  box.h = h;
 }
-function selGridY0() {
-  return 102;
+function hitSelectBox(mx, my, box) {
+  return mx >= box.x && mx <= box.x + box.w && my >= box.y && my <= box.y + box.h;
+}
+function selPageStart() {
+  return Math.floor(GS.selIdx / SEL_PAGE_SIZE) * SEL_PAGE_SIZE;
 }
 function selCellAt(mx, my) {
-  var x0 = selGridX0(),
-    y0 = selGridY0();
-  for (var i = 0; i < LEVELS.length; i++) {
-    var r = Math.floor(i / SEL_COLS),
-      col = i % SEL_COLS;
-    var x = x0 + col * (SEL_CW + SEL_GX),
-      y = y0 + r * (SEL_CH + SEL_GY);
-    if (mx >= x && mx <= x + SEL_CW && my >= y && my <= y + SEL_CH) return i;
+  for (var i = 0; i < SEL_UI.nodes.length; i++) {
+    var node = SEL_UI.nodes[i];
+    if (hitSelectBox(mx, my, node)) return node.level;
   }
   return -1;
 }
+function hasAnyLevelScore() {
+  for (var i = 0; i < LEVELS.length; i++) {
+    try {
+      if ((localStorage.getItem("niu_best_lv" + i) || "0") !== "0") return true;
+    } catch (e) {}
+  }
+  return false;
+}
+function levelProgressLabel(i) {
+  var best = 0;
+  try {
+    best = parseInt(localStorage.getItem("niu_best_lv" + i) || "0", 10) || 0;
+  } catch (e) {}
+  var labels = [];
+  if (best > 0) labels.push("最佳 " + best);
+  if (isCleared(i)) labels.push("已通关");
+  if (isEggGot(i)) labels.push("金蛋");
+  return labels.length ? labels.join(" · ") : "尚未挑战";
+}
+function drawSelectMotif(c, motif, x, y, size, col) {
+  var h = size * 0.5;
+  c.save();
+  c.translate(x, y);
+  c.lineCap = "round";
+  c.lineJoin = "round";
+  c.strokeStyle = col;
+  c.fillStyle = col;
+  c.lineWidth = 4;
+  if (motif === "spike") {
+    for (var si = 0; si < 4; si++) {
+      var sx = -h + si * ((size * 0.82) / 3);
+      c.beginPath();
+      c.moveTo(sx, h * 0.55);
+      c.lineTo(sx + size * 0.13, -h * 0.6);
+      c.lineTo(sx + size * 0.26, h * 0.55);
+      c.closePath();
+      c.fill();
+    }
+    c.globalAlpha = 0.25;
+    c.fillRect(-h, h * 0.55, size, 8);
+  } else if (motif === "cannon") {
+    c.fillRect(-h * 0.88, h * 0.25, size * 0.72, h * 0.28);
+    c.beginPath();
+    c.arc(-h * 0.28, h * 0.4, h * 0.38, 0, TAU);
+    c.fill();
+    c.lineWidth = 13;
+    c.beginPath();
+    c.moveTo(-h * 0.02, h * 0.2);
+    c.lineTo(h * 0.82, -h * 0.35);
+    c.stroke();
+    c.fillStyle = "#fff5cf";
+    c.beginPath();
+    c.arc(h * 0.88, -h * 0.39, 7, 0, TAU);
+    c.fill();
+  } else if (motif === "plank") {
+    for (var pi = 0; pi < 3; pi++) {
+      var py = (pi % 2 ? -h * 0.18 : h * 0.26) + pi * -5;
+      c.fillRect(-h + pi * h * 0.74, py, h * 0.54, 10);
+      c.globalAlpha = 0.42;
+      c.fillRect(-h + pi * h * 0.74, py + 15, h * 0.54, 6);
+      c.globalAlpha = 1;
+    }
+    c.setLineDash([6, 7]);
+    c.beginPath();
+    c.moveTo(-h, h * 0.65);
+    c.lineTo(h, h * 0.65);
+    c.stroke();
+  } else if (motif === "lava") {
+    c.globalAlpha = 0.3;
+    c.fillRect(-h, -h * 0.7, size, size * 1.35);
+    c.globalAlpha = 1;
+    c.lineWidth = 6;
+    for (var li = 0; li < 3; li++) {
+      c.beginPath();
+      c.moveTo(-h, -h * 0.36 + li * 24);
+      c.quadraticCurveTo(-h * 0.45, -h * 0.72 + li * 24, 0, -h * 0.36 + li * 24);
+      c.quadraticCurveTo(h * 0.45, 0 + li * 24, h, -h * 0.36 + li * 24);
+      c.stroke();
+    }
+  } else if (motif === "tower") {
+    for (var ti = 0; ti < 4; ti++) {
+      var th = 24 + ti * 16;
+      c.globalAlpha = 0.3 + ti * 0.16;
+      c.fillRect(-h + ti * 24, h - th, 18, th);
+    }
+    c.globalAlpha = 1;
+    c.beginPath();
+    c.moveTo(-h * 0.78, h * 0.56);
+    c.lineTo(-h * 0.2, h * 0.05);
+    c.lineTo(h * 0.18, -h * 0.35);
+    c.lineTo(h * 0.78, -h * 0.75);
+    c.stroke();
+  } else if (motif === "move") {
+    c.fillRect(-h, h * 0.36, h * 0.72, 12);
+    c.fillRect(h * 0.08, -h * 0.38, h * 0.72, 12);
+    c.lineWidth = 4;
+    c.beginPath();
+    c.moveTo(-h * 0.28, h * 0.05);
+    c.lineTo(h * 0.45, h * 0.05);
+    c.moveTo(h * 0.24, -8);
+    c.lineTo(h * 0.45, h * 0.05);
+    c.lineTo(h * 0.24, 18);
+    c.stroke();
+  } else if (motif === "crumble") {
+    c.globalAlpha = 0.3;
+    c.fillRect(-h, -h * 0.55, size, h * 1.1);
+    c.globalAlpha = 1;
+    c.strokeRect(-h, -h * 0.55, size, h * 1.1);
+    c.beginPath();
+    c.moveTo(-h * 0.48, -h * 0.5);
+    c.lineTo(-h * 0.08, -4);
+    c.lineTo(-h * 0.28, h * 0.43);
+    c.moveTo(h * 0.38, -h * 0.5);
+    c.lineTo(h * 0.08, 2);
+    c.lineTo(h * 0.42, h * 0.48);
+    c.stroke();
+  } else if (motif === "dash") {
+    c.lineWidth = 12;
+    for (var di = 0; di < 3; di++) {
+      var dx = -h + di * h * 0.67;
+      c.globalAlpha = 0.35 + di * 0.25;
+      c.beginPath();
+      c.moveTo(dx, -h * 0.55);
+      c.lineTo(dx + h * 0.42, 0);
+      c.lineTo(dx, h * 0.55);
+      c.stroke();
+    }
+  } else {
+    c.globalAlpha = 0.24;
+    c.beginPath();
+    c.arc(0, 0, h * 0.84, 0, TAU);
+    c.fill();
+    c.globalAlpha = 1;
+    c.lineWidth = 5;
+    c.beginPath();
+    c.arc(0, 0, h * 0.52, 0, TAU);
+    c.stroke();
+    for (var bi = 0; bi < 4; bi++) {
+      var ba = (TAU * bi) / 4 + GT * 0.7;
+      c.fillRect(Math.cos(ba) * h * 0.84 - 5, Math.sin(ba) * h * 0.84 - 5, 10, 10);
+    }
+  }
+  c.restore();
+}
+function drawSelectArrow(c, box, left, col) {
+  rr(c, box.x, box.y, box.w, box.h, 16);
+  c.fillStyle = "rgba(9,12,25,0.78)";
+  c.fill();
+  c.strokeStyle = col;
+  c.lineWidth = 2.5;
+  c.stroke();
+  c.strokeStyle = "#fff";
+  c.lineWidth = 5;
+  c.lineCap = "round";
+  c.beginPath();
+  var cx = box.x + box.w / 2,
+    cy = box.y + box.h / 2;
+  c.moveTo(cx + (left ? 9 : -9), cy - 14);
+  c.lineTo(cx + (left ? -9 : 9), cy);
+  c.lineTo(cx + (left ? 9 : -9), cy + 14);
+  c.stroke();
+}
 function drawSelect2D(c) {
-  c.fillStyle = "rgba(5,6,15,0.45)";
+  var worldCol = ["#59c14d", "#efc06e", "#8ab4ef", "#ff7a5a", "#9aa0b8", "#c08aff", "#ffb84d", "#ff6a50"];
+  var lv = LEVELS[GS.selIdx];
+  var profile = lv.profile || {};
+  var col = worldCol[lv.theme] || "#8ab4ef";
+  var total = LEVELS.length;
+  CLR.x = -1;
+  CLR.y = -1;
+  SEL_UI.nodes = [];
+  setSelectHit(SEL_UI.prev, -1, -1, 0, 0);
+  setSelectHit(SEL_UI.next, -1, -1, 0, 0);
+  setSelectHit(SEL_UI.start, -1, -1, 0, 0);
+  c.fillStyle = "rgba(5,6,15,0.58)";
   c.fillRect(0, 0, W, H);
   c.textAlign = "center";
   c.textBaseline = "middle";
   c.fillStyle = "#ffd23f";
   c.font = "bold 34px " + FONT;
-  c.fillText("选 关 · 直接开跳", W / 2, 58);
-  c.fillStyle = "rgba(255,255,255,0.6)";
+  c.fillText("选 关 · 挑一关开跳", W / 2, 48);
+  c.fillStyle = "rgba(255,255,255,0.7)";
+  c.font = "14px " + FONT;
+  c.fillText("先看关卡性格，再决定怎么死得漂亮。", W / 2, 78);
+
+  var cardX = 120,
+    cardY = 108,
+    cardW = 720,
+    cardH = 294;
+  var cg = c.createLinearGradient(cardX, cardY, cardX + cardW, cardY + cardH);
+  cg.addColorStop(0, "rgba(10,15,32,0.96)");
+  cg.addColorStop(0.55, "rgba(21,18,43,0.94)");
+  cg.addColorStop(1, "rgba(10,12,26,0.96)");
+  rr(c, cardX, cardY, cardW, cardH, 24);
+  c.fillStyle = cg;
+  c.fill();
+  c.strokeStyle = col;
+  c.lineWidth = 2.5;
+  c.stroke();
+  rr(c, cardX + 16, cardY + 16, 182, cardH - 32, 18);
+  c.fillStyle = "rgba(255,255,255,0.055)";
+  c.fill();
+  c.strokeStyle = "rgba(255,255,255,0.16)";
+  c.lineWidth = 1;
+  c.stroke();
+  c.globalAlpha = 0.16;
+  c.fillStyle = col;
+  c.beginPath();
+  c.arc(cardX + 107, cardY + 142, 76, 0, TAU);
+  c.fill();
+  c.globalAlpha = 1;
+  drawSelectMotif(c, profile.motif, cardX + 107, cardY + 151, 128, col);
+  c.fillStyle = "#fff";
+  c.font = "bold 48px " + FONT;
+  c.fillText(profile.icon || "!", cardX + 107, cardY + 254);
+
+  c.textAlign = "left";
+  c.fillStyle = col;
+  c.font = "bold 14px " + FONT;
+  c.fillText(
+    "WORLD " + String(GS.selIdx + 1).padStart(2, "0") + " / " + String(total).padStart(2, "0"),
+    cardX + 226,
+    cardY + 42,
+  );
+  c.fillStyle = "#fff";
+  c.font = "bold 31px " + FONT;
+  c.fillText(lv.name, cardX + 226, cardY + 83);
+  c.fillStyle = "#ffd23f";
+  c.font = "bold 23px " + FONT;
+  c.fillText(profile.title || "未知试炼", cardX + 226, cardY + 122);
+  c.fillStyle = "rgba(230,238,255,0.86)";
+  c.font = "16px " + FONT;
+  c.fillText(profile.challenge || "观察路线", cardX + 226, cardY + 154);
+  c.fillStyle = "rgba(255,255,255,0.57)";
   c.font = "13px " + FONT;
-  c.fillText("方向键/点击选择 · Enter/点击开始 · Esc 返回", W / 2, 92);
-  var x0 = selGridX0(),
-    y0 = selGridY0();
-  var worldCol = ["#59c14d", "#efc06e", "#8ab4ef", "#ff7a5a", "#9aa0b8", "#c08aff", "#ffb84d", "#ff6a50"];
-  for (var i = 0; i < LEVELS.length; i++) {
-    var r = Math.floor(i / SEL_COLS),
-      col = i % SEL_COLS;
-    var x = x0 + col * (SEL_CW + SEL_GX),
-      y = y0 + r * (SEL_CH + SEL_GY);
-    var sel = i === GS.selIdx;
-    var unl = isUnlocked(i);
-    c.fillStyle = !unl ? "rgba(24,26,36,0.75)" : sel ? "rgba(255,210,63,0.22)" : "rgba(16,16,30,0.6)";
-    c.fillRect(x, y, SEL_CW, SEL_CH);
-    c.strokeStyle = !unl ? "#4a4c56" : sel ? "#ffd23f" : worldCol[LEVELS[i].theme];
-    c.lineWidth = sel ? 3 : 1.5;
-    c.strokeRect(x, y, SEL_CW, SEL_CH);
-    c.fillStyle = !unl ? "#767a86" : sel ? "#ffd23f" : "#fff";
-    c.font = "bold 20px " + FONT;
-    c.fillText(LEVELS[i].name.split(" ")[0], x + SEL_CW / 2, y + 20);
-    c.font = "12px " + FONT;
-    c.fillStyle = !unl ? "rgba(118,122,134,0.6)" : sel ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.55)";
-    c.fillText(LEVELS[i].name.split(" ").slice(1).join(" "), x + SEL_CW / 2, y + 41);
-    if (!unl) {
-      c.fillStyle = "rgba(148,152,164,0.9)";
-      c.font = "bold 11px " + FONT;
-      c.fillText("🔒 未解锁", x + SEL_CW / 2, y + 59);
-      continue;
-    }
-    var blv = 0;
-    try {
-      blv = parseInt(localStorage.getItem("niu_best_lv" + i) || "0", 10) || 0;
-    } catch (e) {}
-    var eggTag = isEggGot(i) ? " 🥚" : "";
-    if (blv > 0) {
-      c.fillStyle = "rgba(255,210,63,0.8)";
-      c.font = "11px " + FONT;
-      c.fillText("最佳 " + blv + (isCleared(i) ? " ✓" : "") + eggTag, x + SEL_CW / 2, y + 59);
-    } else if (isCleared(i)) {
-      c.fillStyle = "rgba(138,255,90,0.9)";
-      c.font = "bold 11px " + FONT;
-      c.fillText("✓ 已通关" + eggTag, x + SEL_CW / 2, y + 59);
-    } else if (isEggGot(i)) {
-      c.fillStyle = "rgba(255,248,224,0.9)";
-      c.font = "11px " + FONT;
-      c.fillText("🥚 金蛋", x + SEL_CW / 2, y + 59);
-    }
+  c.fillText("提示：" + (profile.tip || "先观察，再起跳。"), cardX + 226, cardY + 184);
+  c.fillStyle = col;
+  c.font = "bold 14px " + FONT;
+  c.fillText("难度  " + "★".repeat(profile.difficulty || 1), cardX + 226, cardY + 214);
+  c.fillStyle = isCleared(GS.selIdx) ? "#8aff5a" : isEggGot(GS.selIdx) ? "#fff1a8" : "rgba(255,255,255,0.55)";
+  c.font = "14px " + FONT;
+  c.fillText(levelProgressLabel(GS.selIdx), cardX + 226, cardY + 241);
+
+  var startX = cardX + 414,
+    startY = cardY + 216,
+    startW = 276,
+    startH = 58;
+  setSelectHit(SEL_UI.start, startX, startY, startW, startH);
+  rr(c, startX, startY, startW, startH, 16);
+  c.fillStyle = isUnlocked(GS.selIdx) ? "#ffd23f" : "#4a4c56";
+  c.fill();
+  c.strokeStyle = "rgba(255,255,255,0.75)";
+  c.lineWidth = 1.5;
+  c.stroke();
+  c.textAlign = "center";
+  c.fillStyle = "#281600";
+  c.font = "bold 22px " + FONT;
+  c.fillText(isUnlocked(GS.selIdx) ? "开始挑战  ▶" : "尚未解锁", startX + startW / 2, startY + startH / 2 + 1);
+
+  var pageStart = selPageStart();
+  var count = Math.min(SEL_PAGE_SIZE, total - pageStart);
+  var nodeGap = 8;
+  var nodeW = Math.min(76, (700 - nodeGap * (count - 1)) / Math.max(1, count));
+  var nodeH = 60;
+  var nodeTotal = nodeW * count + nodeGap * (count - 1);
+  var nodeX0 = (W - nodeTotal) / 2;
+  var nodeY = 432;
+  setSelectHit(SEL_UI.prev, 42, nodeY, 64, nodeH);
+  setSelectHit(SEL_UI.next, W - 106, nodeY, 64, nodeH);
+  drawSelectArrow(c, SEL_UI.prev, true, col);
+  drawSelectArrow(c, SEL_UI.next, false, col);
+  for (var ni = 0; ni < count; ni++) {
+    var idx = pageStart + ni;
+    var nx = nodeX0 + ni * (nodeW + nodeGap);
+    var selected = idx === GS.selIdx;
+    var node = { x: nx, y: nodeY, w: nodeW, h: nodeH, level: idx };
+    SEL_UI.nodes.push(node);
+    rr(c, nx, nodeY, nodeW, nodeH, 12);
+    c.fillStyle = selected ? "rgba(255,210,63,0.26)" : "rgba(8,12,26,0.74)";
+    c.fill();
+    c.strokeStyle = selected ? "#ffd23f" : worldCol[LEVELS[idx].theme] || "#8ab4ef";
+    c.lineWidth = selected ? 2.8 : 1.25;
+    c.stroke();
+    c.fillStyle = selected ? "#ffd23f" : "#fff";
+    c.font = "bold 18px " + FONT;
+    c.textAlign = "center";
+    c.fillText(String(idx + 1), nx + nodeW / 2, nodeY + 24);
+    c.fillStyle = isCleared(idx) ? "#8aff5a" : isEggGot(idx) ? "#fff1a8" : "rgba(255,255,255,0.45)";
+    c.font = "bold 11px " + FONT;
+    c.fillText(isCleared(idx) ? "✓" : isEggGot(idx) ? "蛋" : LEVELS[idx].profile.icon, nx + nodeW / 2, nodeY + 45);
   }
-  c.fillStyle = "rgba(255,255,255,0.5)";
+  c.fillStyle = "rgba(255,255,255,0.6)";
   c.font = "12px " + FONT;
-  c.fillText("每关终点都有 GPT 老板守关 · 终章 Anthropic 机房决战 · 跳刺重制 " + VER, W / 2, H - 24);
-  /* 清空最佳/最高分 按钮 */
-  if (
-    GS.hs > 0 ||
-    (function () {
-      var any = false;
-      for (var bi = 0; bi < LEVELS.length; bi++) {
-        try {
-          if ((localStorage.getItem("niu_best_lv" + bi) || "0") !== "0") {
-            any = true;
-            break;
-          }
-        } catch (e) {}
-      }
-      return any;
-    })()
-  ) {
-    CLR.x = 12;
-    CLR.y = 14;
-    CLR.w = 120;
+  c.fillText(
+    total > SEL_PAGE_SIZE
+      ? "第 " + (pageStart + 1) + "–" + (pageStart + count) + " 关 · 点编号选关"
+      : "点编号选关 · 点挑战按钮开跳",
+    W / 2,
+    414,
+  );
+  c.fillStyle = "rgba(255,255,255,0.52)";
+  c.font = "12px " + FONT;
+  c.fillText("← → 切关 · ↑ ↓ 快速跳转 · Enter 开始 · Esc 返回", W / 2, H - 22);
+
+  if (GS.hs > 0 || hasAnyLevelScore()) {
+    CLR.x = W - 148;
+    CLR.y = 18;
+    CLR.w = 128;
     CLR.h = 34;
-    c.fillStyle = "rgba(20,16,34,0.85)";
-    c.fillRect(CLR.x, CLR.y, CLR.w, CLR.h);
+    rr(c, CLR.x, CLR.y, CLR.w, CLR.h, 10);
+    c.fillStyle = "rgba(20,16,34,0.88)";
+    c.fill();
     c.strokeStyle = "#ff6a6a";
     c.lineWidth = 1.5;
-    c.strokeRect(CLR.x, CLR.y, CLR.w, CLR.h);
-    c.fillStyle = "#ff8a8a";
+    c.stroke();
+    c.fillStyle = "#ff9a9a";
     c.font = "bold 13px " + FONT;
-    c.textAlign = "center";
-    c.textBaseline = "middle";
-    c.fillText("🧹 清空成绩", CLR.x + CLR.w / 2, CLR.y + CLR.h / 2 + 1);
+    c.fillText("清空成绩", CLR.x + CLR.w / 2, CLR.y + CLR.h / 2 + 1);
   }
 }
 function drawOver2D(c) {
@@ -5681,12 +5951,22 @@ cv.addEventListener("pointerdown", function (e) {
       popText(W / 2 + 90, H / 2 - 30, "已清空·重新开始", "#8aff5a");
       return;
     }
+    if (hitSelectBox(mx, my, SEL_UI.prev)) {
+      selectLevel(GS.selIdx - 1);
+      return;
+    }
+    if (hitSelectBox(mx, my, SEL_UI.next)) {
+      selectLevel(GS.selIdx + 1);
+      return;
+    }
     var cell = selCellAt(mx, my);
     if (cell >= 0) {
-      GS.selIdx = cell;
-      if (isUnlocked(cell)) {
-        startLevel(cell);
-      } else {
+      selectLevel(cell);
+      return;
+    }
+    if (hitSelectBox(mx, my, SEL_UI.start)) {
+      if (isUnlocked(GS.selIdx)) startLevel(GS.selIdx);
+      else {
         sWarn();
         addShake(3);
         popText(W / 2, H / 2, "先通过上一关解锁!", "#ff8a8a");
