@@ -1,5 +1,6 @@
 import fs from "node:fs";
-global.window = {};
+/* levels.js shares the runtime tile constant with mapengine.js. */
+global.window = { ME: { TILE: 40 } };
 const code = fs.readFileSync("levels.js", "utf8");
 new Function("window", code)(window);
 const LEVELS = window.createNiuLaiLevels(6.283185307);
