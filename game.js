@@ -5871,6 +5871,39 @@ function drawNoWebGL() {
   ctx.fillText("请使用较新的 Chrome / Edge / Firefox / Safari", W / 2, H / 2 + 10);
 }
 function drawFX2D() {
+  /*
+   * 可见的青色引导线对应 AI safety projection 的脚线，避免把“能持续
+   * 展示路线”的容错误解成手动关卡被改简单了。
+   */
+  if (aiSafetyActive() && curLV && (GS.state === "play" || GS.state === "bossintro")) {
+    var guideY = 12 * T - 5;
+    var guideStart = PL.x - camX - 80;
+    var guideEnd = Math.min(W + 60, PL.x - camX + 260);
+    ctx.save();
+    ctx.globalAlpha = 0.78;
+    ctx.strokeStyle = "#92efff";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 7]);
+    ctx.lineDashOffset = -GT * 90;
+    ctx.beginPath();
+    ctx.moveTo(guideStart, guideY);
+    ctx.lineTo(guideEnd, guideY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#d4fbff";
+    ctx.font = "bold 10px " + FONT;
+    ctx.textAlign = "left";
+    ctx.fillText("AI 安全线路", Math.max(12, guideStart), guideY - 10);
+    if (AI.landingX) {
+      var targetX = AI.landingX - camX;
+      ctx.strokeStyle = "#ffd86a";
+      ctx.beginPath();
+      ctx.moveTo(targetX, guideY - 54);
+      ctx.lineTo(targetX, guideY + 5);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   if (!THREE_OK) {
     for (var sq = 0; sq < shots.length; sq++) {
       var sh = shots[sq];
