@@ -2076,9 +2076,17 @@ function collideY(o) {
     if (platformHit) lastTy = Math.min(lastTy, Math.ceil(platformTop / T) - 1);
     for (var ty = firstTy; ty <= lastTy && !o.hitB; ty++) {
       var surfaceY = ty * T;
-      if (prevBottom > surfaceY + 8) continue;
       for (var tx = tx0; tx <= tx1; tx++) {
         var c = tileAt(tx, ty);
+        /*
+         * AI 安全线路在试错地形上铺一条与原地面齐平的虚拟脚线：
+         * 刺坑的刺在第 11 行，正确脚线是第 12 行；岩浆本身从第
+         * 12 行开始，顶面就是第 12 行。这样演示路线不会因尖刺
+         * 碰撞面的高度差卡进坑里。
+         */
+        var aiRouteFloor = aiSafetyActive() && (c === 10 || c === 11);
+        var contactY = aiRouteFloor && c === 10 ? (ty + 1) * T : surfaceY;
+        if (prevBottom > contactY + 8) continue;
         if (c === 12 && o === PL) {
           o.y = surfaceY - o.h - 0.01;
           o.vy = -1040;
@@ -2119,7 +2127,7 @@ function collideY(o) {
           (c === 11 && aiSafetyActive()) ||
           (c === 9 && prevBottom <= surfaceY + 6)
         ) {
-          o.y = surfaceY - o.h - 0.01;
+          o.y = contactY - o.h - 0.01;
           o.vy = 0;
           o.ground = true;
           o.hitB = true;
