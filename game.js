@@ -2084,8 +2084,8 @@ function collideY(o) {
          * 12 行开始，顶面就是第 12 行。这样演示路线不会因尖刺
          * 碰撞面的高度差卡进坑里。
          */
-        var aiRouteFloor = aiSafetyActive() && (c === 10 || c === 11);
-        var contactY = aiRouteFloor && c === 10 ? (ty + 1) * T : surfaceY;
+        var aiRouteFloor = aiSafetyActive() && (c === 9 || c === 10 || c === 11 || c === 16);
+        var contactY = aiRouteFloor ? 12 * T : surfaceY;
         if (prevBottom > contactY + 8) continue;
         if (c === 12 && o === PL) {
           o.y = surfaceY - o.h - 0.01;
@@ -2121,6 +2121,7 @@ function collideY(o) {
           continue;
         }
         if (
+          aiRouteFloor ||
           c === 10 ||
           c === 16 ||
           solid(c) ||
@@ -2142,6 +2143,16 @@ function collideY(o) {
       o.ground = true;
       o.hitB = true;
       o._onPlat = platformHit;
+    }
+    /*
+     * AI 演示的安全线路会在地图原始地面高度提供一条投影脚线，处理
+     * 窄板之间恰好没有同高刺块的空档。手动模式不会走到这里。
+     */
+    if (!o.hitB && o === PL && aiSafetyActive() && nextBottom >= 12 * T) {
+      o.y = 12 * T - o.h - 0.01;
+      o.vy = 0;
+      o.ground = true;
+      o.hitB = true;
     }
   } else if (o.vy < 0) {
     var prevTop = o.prevY,
