@@ -366,7 +366,34 @@ try {
     out.bugs.comboRewards={time:GS.time,score:GS.score,bonus:GS.sBonus,lives:GS.lives,star:PL.star};
     loadLevel(3,true); out.bugs.level42Lava=Array.from(tiles).filter(function(c){return c===11;}).length;
     out.bugs.level44Flag=LEVELS[3].flagX;
-    /* AI 路线演示走游戏本体的障碍读取和按键控制；安全线路仅在演示时容错。 */
+    /* AI 必须走真实跳跃/碰撞：没有无敌，也没有虚拟地板。 */
+    setAIMode(true);
+    loadLevel(0, true);
+    GS.state = "play";
+    GS.lives = 9;
+    PL.inv = 0;
+    PL.star = 0;
+    PL.big = false;
+    PL.h = 36;
+    PL.dead = false;
+    PL.x = 14 * T + 10;
+    PL.y = 12 * T - PL.h;
+    hazardCheck();
+    out.aiMortal = !!(PL.dead || GS.state === "dead");
+    loadLevel(0, true);
+    GS.state = "play";
+    PL.inv = 0;
+    PL.dead = false;
+    PL.x = 20 * T;
+    PL.y = 13 * T - PL.h;
+    PL.vy = 80;
+    PL.prevY = PL.y - 8;
+    PL.ground = false;
+    collideY(PL);
+    var feet = PL.y + PL.h;
+    out.aiNoMagicFloor = !(PL.ground && Math.abs(feet - 12 * T) < 2 && tileAt(20, 12) === 0);
+    out.aiCheats = { safetyFn: typeof aiSafetyActive, safetyFlag: !!AI.safety };
+    setAIMode(false);
     out.aiRoutes = [];
     function botSeed(n) {
       var s = n >>> 0;
@@ -385,13 +412,17 @@ try {
       GS.lives = AI.lives;
       var maxX = PL.x,
         deaths = 0,
+        jumps = 0,
+        prevVy = PL.vy,
         prevState = GS.state,
         frames = 0,
         passed = false,
         goalState = aiLevel === FINAL_LV ? "winseq" : "clear";
-      for (frames = 0; frames < 60 * 150; frames++) {
+      for (frames = 0; frames < 60 * 180; frames++) {
         update(1 / 60);
         if (PL.x > maxX) maxX = PL.x;
+        if (prevVy > -80 && PL.vy < -480) jumps++;
+        prevVy = PL.vy;
         if (GS.state === "dead" && prevState !== "dead") deaths++;
         prevState = GS.state;
         if (GS.state === goalState) {
@@ -408,6 +439,7 @@ try {
         currentTile: Math.round((PL.x / T) * 10) / 10,
         maxTile: Math.round((maxX / T) * 10) / 10,
         deaths: deaths,
+        jumps: jumps,
         retries: AI.retries,
         status: AI.status,
         error: _errMsg,
@@ -716,11 +748,18 @@ try {
   );
   check(result.fun?.eggMarked && result.fun.eggCountAfter >= 1, "golden egg collection did not persist");
   /* AI 路线模式必须经由正常输入与碰撞流程跑进每关结算状态。 */
+  check(result.aiMortal, "AI mode still ignores spike damage");
+  check(result.aiNoMagicFloor, "AI mode still plants a virtual floor over pits");
+  check(
+    result.aiCheats && result.aiCheats.safetyFn === "undefined" && !result.aiCheats.safetyFlag,
+    "AI safety cheat helpers are still present",
+  );
   for (const route of result.aiRoutes) {
     check(!route.error, `AI route error in ${route.name}: ${route.error}`);
+    check(route.jumps > 0, `AI never jumped in ${route.name}`);
     check(
       route.passed,
-      `AI did not clear ${route.name} (state=${route.state}, max=${route.maxTile}, status=${route.status})`,
+      `AI did not clear ${route.name} (state=${route.state}, max=${route.maxTile}, jumps=${route.jumps}, deaths=${route.deaths}, status=${route.status})`,
     );
   }
   check(portraitUi.viewport.h > portraitUi.viewport.w, "portrait viewport was not applied");
