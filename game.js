@@ -778,6 +778,7 @@ var AI = {
   stallT: 0,
   lastX: 0,
   landingX: 0,
+  landingBrake: 0,
   retries: 0,
   status: "待命",
   detail: "",
@@ -799,6 +800,7 @@ function aiResetForLevel(fresh) {
   AI.stallT = 0;
   AI.lastX = PL.x;
   AI.landingX = 0;
+  AI.landingBrake = 0;
   AI.bossDir = -1;
   AI.retries = fresh ? 0 : AI.retries + 1;
   AI.status = fresh ? "扫描地形" : "自动重试 " + AI.retries;
@@ -976,6 +978,7 @@ function aiStartJump(hold, target) {
   AI.jumpT = clamp(hold || 0.28, 0.15, 0.62);
   AI.jumpCd = 0.18;
   AI.landingX = aiLandingX(target);
+  AI.landingBrake = target && target.tile === 9 ? T * 2 : AI.landingX ? T * 0.75 : 0;
   keys.jump = true;
   justPressed.jump = true;
   return true;
@@ -985,6 +988,7 @@ function aiStartWallJump() {
   AI.jumpT = 0.34;
   AI.jumpCd = 0.16;
   AI.landingX = 0;
+  AI.landingBrake = 0;
   keys.left = !!PL.hitL;
   keys.right = !!PL.hitR;
   keys.jump = true;
@@ -1122,13 +1126,16 @@ function updateAIMode(dt) {
     }
   } else if (AI.landingX) {
     var tx = AI.landingX;
-    if (px > tx + T * 0.75) {
+    if (px > tx - AI.landingBrake) {
       keys.left = true;
       keys.right = false;
     }
   }
   if (PL.ground) {
-    if (AI.landingX && Math.abs(px - AI.landingX) < T * 1.35) AI.landingX = 0;
+    if (AI.landingX && Math.abs(px - AI.landingX) < T * 1.35) {
+      AI.landingX = 0;
+      AI.landingBrake = 0;
+    }
     if (PL.x < AI.lastX + 3) AI.stallT += dt;
     else {
       AI.lastX = PL.x;
