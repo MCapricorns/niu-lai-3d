@@ -777,6 +777,7 @@ var AI = {
   dodgeT: 0,
   stallT: 0,
   lastX: 0,
+  landingX: 0,
   retries: 0,
   status: "待命",
   detail: "",
@@ -797,6 +798,7 @@ function aiResetForLevel(fresh) {
   AI.dodgeT = 0;
   AI.stallT = 0;
   AI.lastX = PL.x;
+  AI.landingX = 0;
   AI.bossDir = -1;
   AI.retries = fresh ? 0 : AI.retries + 1;
   AI.status = fresh ? "扫描地形" : "自动重试 " + AI.retries;
@@ -853,6 +855,23 @@ function aiFindSafeLanding(fromTx, distance) {
     if (aiLandingOK(s)) return s;
   }
   return null;
+}
+function aiLandingX(s) {
+  if (!s) return 0;
+  /* 找同一高度的连续安全面中点；单格浮板则严格瞄准正中。 */
+  var left = s.tx;
+  var right = s.tx;
+  while (left > s.tx - 3) {
+    var ls = aiSurfaceAt(left - 1);
+    if (!aiLandingOK(ls) || ls.row !== s.row) break;
+    left--;
+  }
+  while (right < s.tx + 3) {
+    var rs = aiSurfaceAt(right + 1);
+    if (!aiLandingOK(rs) || rs.row !== s.row) break;
+    right++;
+  }
+  return ((left + right + 1) * T) / 2;
 }
 function aiWallAhead(col, feetRow) {
   var headRow = Math.max(0, Math.floor(PL.y / T));
@@ -951,10 +970,22 @@ function aiFireNearby(px) {
   }
   return false;
 }
-function aiStartJump(hold) {
+function aiStartJump(hold, target) {
   if (!PL.ground || AI.jumpCd > 0) return false;
   AI.jumpT = clamp(hold || 0.28, 0.15, 0.62);
   AI.jumpCd = 0.18;
+  AI.landingX = aiLandingX(target);
+  keys.jump = true;
+  justPressed.jump = true;
+  return true;
+}
+function aiStartWallJump() {
+  if (PL.ground || AI.jumpCd > 0 || (!PL.hitL && !PL.hitR)) return false;
+  AI.jumpT = 0.34;
+  AI.jumpCd = 0.16;
+  AI.landingX = 0;
+  keys.left = !!PL.hitL;
+  keys.right = !!PL.hitR;
   keys.jump = true;
   justPressed.jump = true;
   return true;
@@ -962,7 +993,8 @@ function aiStartJump(hold) {
 function aiJumpHoldFor(terrain) {
   var dist = terrain.target ? terrain.target.tx - terrain.col : terrain.distance + 2;
   var rise = terrain.target ? Math.max(0, terrain.feetRow - terrain.target.row) : 0;
-  return clamp(0.18 + dist * 0.035 + rise * 0.065, 0.2, 0.58);
+  /* 以落点距离而非“按得越久越好”计算：短刺后仍要能落回呼吸平台。 */
+  return clamp(0.12 + dist * 0.025 + rise * 0.055, 0.18, 0.5);
 }
 function aiControlMovingBridge(terrain, px) {
   var bridge = aiMovingBridgeAhead(px);
@@ -973,7 +1005,7 @@ function aiControlMovingBridge(terrain, px) {
     keys.right = true;
     keys.left = false;
     if (exit && bridge.x + bridge.w > exit.tx * T - T * 2 && PL.ground) {
-      aiStartJump(0.5);
+      aiStartJump(0.5, exit);
       AI.status = "摆渡到岸";
     } else AI.status = "读取摆渡轨迹";
     return true;
@@ -1057,6 +1089,10 @@ function updateAIMode(dt) {
     aiControlFinalBoss(px);
     return;
   }
+  if (!PL.ground && (PL.hitL || PL.hitR) && aiStartWallJump()) {
+    AI.status = "贴墙：连续蹬墙";
+    return;
+  }
   var mini = aiLiveMiniBoss();
   if (mini && mini.x - px < 11 * T) {
     aiControlMiniBoss(mini, px);
@@ -1078,19 +1114,20 @@ function updateAIMode(dt) {
       aiStartJump(0.3);
       AI.status = "踩过拦路怪";
     } else if (terrain.kind !== "平路" && terrain.distance <= 4) {
-      aiStartJump(aiJumpHoldFor(terrain));
+      aiStartJump(aiJumpHoldFor(terrain), terrain.target);
       AI.status = terrain.kind + " → 计算起跳";
     } else {
       AI.status = terrain.ceiling ? "低位安全通行" : "扫描前方地形";
     }
-  } else if (terrain.target) {
-    var tx = terrain.target.tx * T + T / 2;
+  } else if (AI.landingX) {
+    var tx = AI.landingX;
     if (px > tx + T * 0.75) {
       keys.left = true;
       keys.right = false;
     }
   }
   if (PL.ground) {
+    if (AI.landingX && Math.abs(px - AI.landingX) < T * 1.35) AI.landingX = 0;
     if (PL.x < AI.lastX + 3) AI.stallT += dt;
     else {
       AI.lastX = PL.x;
