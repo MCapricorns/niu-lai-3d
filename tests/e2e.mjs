@@ -562,9 +562,21 @@ try {
     tap(target);
     var nodeWorked=GS.selIdx===target.level;
     render();
+    tap(SEL_UI.ai);
+    var aiCardWorked=AI.enabled;
+    render();
+    tap(SEL_UI.ai);
+    var aiCardReset=!AI.enabled;
+    render();
     var chosen=GS.selIdx;
     tap(SEL_UI.start);
     var startWorked=GS.state==="play"&&GS.li===chosen;
+    render();
+    tap(AI_UI);
+    var aiHudWorked=AI.enabled;
+    render();
+    tap(AI_UI);
+    var aiHudReset=!AI.enabled;
     GS.state="select";
     syncTouchControls();
     var hiddenOnSelect=!td.classList.contains("is-active");
@@ -591,7 +603,11 @@ try {
         startBounds:startBounds,
         arrowWorked:arrowWorked,
         nodeWorked:nodeWorked,
-        startWorked:startWorked
+        startWorked:startWorked,
+        aiCardWorked:aiCardWorked,
+        aiCardReset:aiCardReset,
+        aiHudWorked:aiHudWorked,
+        aiHudReset:aiHudReset
       },
       controls:{
         enabled:td.classList.contains("touch-enabled"),
@@ -716,6 +732,11 @@ try {
   check(portraitUi.selector.arrowWorked, "selector next arrow did not change levels");
   check(portraitUi.selector.nodeWorked, "selector level rail did not select a level");
   check(portraitUi.selector.startWorked, "selector start button did not launch the chosen level");
+  check(
+    portraitUi.selector.aiCardWorked && portraitUi.selector.aiCardReset,
+    "selector AI toggle did not switch cleanly",
+  );
+  check(portraitUi.selector.aiHudWorked && portraitUi.selector.aiHudReset, "in-game AI toggle did not switch cleanly");
   check(portraitUi.controls.enabled, "touch controls were not initialized for portrait UI");
   check(portraitUi.controls.hiddenOnSelect, "touch controls were visible over the selector");
   check(portraitUi.controls.shownInPlay, "touch controls did not appear during play");
