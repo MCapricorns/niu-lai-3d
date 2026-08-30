@@ -994,7 +994,7 @@ function aiJumpHoldFor(terrain) {
   var dist = terrain.target ? terrain.target.tx - terrain.col : terrain.distance + 2;
   var rise = terrain.target ? Math.max(0, terrain.feetRow - terrain.target.row) : 0;
   /* 以落点距离而非“按得越久越好”计算：短刺后仍要能落回呼吸平台。 */
-  return clamp(0.12 + dist * 0.025 + rise * 0.055, 0.18, 0.5);
+  return clamp(0.16 + dist * 0.03 + rise * 0.06, 0.22, 0.56);
 }
 function aiControlMovingBridge(terrain, px) {
   var bridge = aiMovingBridgeAhead(px);
