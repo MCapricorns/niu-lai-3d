@@ -366,7 +366,7 @@ try {
     out.bugs.comboRewards={time:GS.time,score:GS.score,bonus:GS.sBonus,lives:GS.lives,star:PL.star};
     loadLevel(3,true); out.bugs.level42Lava=Array.from(tiles).filter(function(c){return c===11;}).length;
     out.bugs.level44Flag=LEVELS[3].flagX;
-    /* AI 路线演示走游戏本体的障碍读取和按键控制。每关必须抵达结算状态。 */
+    /* AI 路线演示走游戏本体的障碍读取和按键控制；安全线路仅在演示时容错。 */
     out.aiRoutes = [];
     function botSeed(n) {
       var s = n >>> 0;
@@ -699,7 +699,7 @@ try {
     "wall jump output regressed",
   );
   check(result.fun?.eggMarked && result.fun.eggCountAfter >= 1, "golden egg collection did not persist");
-  /* AI 路线模式必须用正常物理跑进每关的结算状态。 */
+  /* AI 路线模式必须经由正常输入与碰撞流程跑进每关结算状态。 */
   for (const route of result.aiRoutes) {
     check(!route.error, `AI route error in ${route.name}: ${route.error}`);
     check(

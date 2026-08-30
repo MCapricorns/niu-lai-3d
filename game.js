@@ -771,6 +771,7 @@ function syncTouchControls() {
  */
 var AI = {
   enabled: false,
+  safety: true,
   lives: 24,
   jumpT: 0,
   jumpCd: 0,
@@ -816,7 +817,7 @@ function setAIMode(enabled) {
     if (GS.state === "play" || GS.state === "bossintro") {
       GS.lives = Math.max(GS.lives, AI.lives);
       aiResetForLevel(true);
-      popText(PL.x + 14, PL.y - 62, "AI 接管：读取障碍路线", "#8ad4ff");
+      popText(PL.x + 14, PL.y - 62, "AI 接管：读取障碍路线 · 安全演示", "#8ad4ff");
     } else {
       popText(W / 2, H / 2 - 80, "AI 路线演示已就绪", "#8ad4ff");
     }
@@ -826,6 +827,13 @@ function setAIMode(enabled) {
     popText(PL.x + 14, PL.y - 52, "已切回手动操控", "#fff");
   }
   sClick();
+}
+function aiSafetyActive() {
+  /*
+   * 自动演示必须能完整展示路线，而不是在同一枚试错刺上反复读档。
+   * 安全线路只在 AI 接管期间启用；手动模式仍保留原本的一击必死设计。
+   */
+  return AI.enabled && AI.safety;
 }
 function aiFloorTile(c) {
   return solid(c) || c === 9 || c === 12 || c === 16;
@@ -1471,6 +1479,11 @@ function startLevel(i) {
 /* ============ 玩家 ============ */
 function damagePlayer() {
   if (PL.inv > 0 || PL.dead || GS.state !== "play") return;
+  if (aiSafetyActive()) {
+    /* AI 安全线路吸收一次误判；仍会显示路线与正常物理移动。 */
+    PL.inv = 0.12;
+    return;
+  }
   if (PL.star > 0) return;
   if (PL.big) {
     PL.big = false;
@@ -2091,12 +2104,18 @@ function collideY(o) {
           sBreak();
           continue;
         }
-        if (c === 10 || c === 16 || solid(c) || (c === 9 && prevBottom <= surfaceY + 6)) {
+        if (
+          c === 10 ||
+          c === 16 ||
+          solid(c) ||
+          (c === 11 && aiSafetyActive()) ||
+          (c === 9 && prevBottom <= surfaceY + 6)
+        ) {
           o.y = surfaceY - o.h - 0.01;
           o.vy = 0;
           o.ground = true;
           o.hitB = true;
-          if (c === 16 && o === PL) triggerCrumble(tx, ty);
+          if (c === 16 && o === PL && !aiSafetyActive()) triggerCrumble(tx, ty);
           break;
         }
       }
@@ -2313,7 +2332,7 @@ function hazardCheck() {
         return;
       }
       if (c === 11) {
-        if (PL.star > 0) {
+        if (PL.star > 0 || aiSafetyActive()) {
           popText(PL.x + 14, PL.y - 20, "岩浆:不怕!", "#5ad4ff");
           return;
         }
@@ -5722,7 +5741,7 @@ function drawHUD2D(c) {
   c.textAlign = "center";
   c.fillStyle = AI.enabled ? "#07121f" : "#d8edff";
   c.font = "bold 12px " + FONT;
-  c.fillText(AI.enabled ? "AI · " + AI.status : "AI 路线演示 · I", AI_UI.x + AI_UI.w / 2, AI_UI.y + 18);
+  c.fillText(AI.enabled ? "AI 安全 · " + AI.status : "AI 路线演示 · I", AI_UI.x + AI_UI.w / 2, AI_UI.y + 18);
   c.restore();
   c.textAlign = "left";
   hintText(
@@ -6458,7 +6477,7 @@ function drawSelect2D(c) {
   c.font = "bold 16px " + FONT;
   c.fillText(AI.enabled ? "AI 已接管" : "AI 路线演示", aiX + aiW / 2, aiY + 24);
   c.font = "11px " + FONT;
-  c.fillText(AI.enabled ? "点此切回手动" : "点此启动智能通关", aiX + aiW / 2, aiY + 43);
+  c.fillText(AI.enabled ? "安全演示 · 点此切回手动" : "点此启动智能通关", aiX + aiW / 2, aiY + 43);
   setSelectHit(SEL_UI.start, startX, startY, startW, startH);
   rr(c, startX, startY, startW, startH, 16);
   c.fillStyle = isUnlocked(GS.selIdx) ? "#ffd23f" : "#4a4c56";
