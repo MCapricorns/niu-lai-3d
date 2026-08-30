@@ -885,7 +885,8 @@ function aiWallAhead(col, feetRow) {
 function aiCeilingAhead(col) {
   var headRow = Math.floor(PL.y / T);
   for (var d = 0; d <= 3; d++) {
-    for (var ty = Math.max(0, headRow - 1); ty <= headRow; ty++) {
+    /* 只把头顶上一行的刺当屋檐；脚下同高的刺是需要跳过的地面危险。 */
+    for (var ty = Math.max(0, headRow - 1); ty < headRow; ty++) {
       if (tileAt(col + d, ty) === 10) return true;
     }
   }
