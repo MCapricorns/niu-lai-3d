@@ -977,8 +977,9 @@ function aiReadTerrain() {
       break;
     }
   }
+  var wallTop = wall ? aiWallTop(wall.tx, feetRow) : null;
+  if (wall && (!wallTop || wallTop.row < feetRow - 3)) wall = null;
   if (wall && (!firstRisk || wall.distance <= firstRisk.distance)) {
-    var top = aiWallTop(wall.tx, feetRow);
     return {
       col: col,
       feetRow: feetRow,
@@ -986,7 +987,7 @@ function aiReadTerrain() {
       current: current,
       kind: "高台",
       distance: wall.distance,
-      target: aiLandingOK(top) ? top : null,
+      target: aiLandingOK(wallTop) ? wallTop : null,
       narrow: aiIsNarrow(current),
     };
   }
@@ -1141,25 +1142,19 @@ function aiControlMovingBridge(terrain, px) {
   }
   var center = bridge.x + bridge.w / 2;
   var edge = (terrain.col + Math.max(1, terrain.distance)) * T;
-  if (px < edge - 34) {
+  if (px < edge - 28) {
     keys.right = true;
     AI.status = "靠近沟沿";
     return true;
   }
   keys.right = false;
-  keys.left = true;
-  var soon = (Math.sin((bridge.t + 0.25) * 1.4) + 1) / 2;
-  var soonX = lerp(bridge.x1, bridge.x2, soon) + bridge.w / 2;
-  var approaching = Math.abs(soonX - px) < Math.abs(center - px) - 4;
-  if (center - px > 2.6 * T || !approaching) {
-    AI.status = "等平台回来";
+  keys.left = PL.vx > 50;
+  if ((PL.ground || PL.coyote > 0) && Math.abs(center - px) < 3.2 * T) {
+    aiStartJump(0.4, { tx: Math.floor(center / T), row: Math.floor(bridge.y / T), tile: 9, hazard: false });
+    AI.status = "跳上移动平台";
     return true;
   }
-  keys.right = center >= px - 8;
-  keys.left = !keys.right;
-  if ((PL.ground || PL.coyote > 0) && Math.abs(center - px) < 2.8 * T) {
-    aiStartJump(0.36, { tx: Math.floor(center / T), row: Math.floor(bridge.y / T), tile: 9, hazard: false });
-  }
+  AI.status = "等平台回来";
   AI.status = "跳上移动平台";
   return true;
 }
