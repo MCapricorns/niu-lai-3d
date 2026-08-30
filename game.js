@@ -770,7 +770,7 @@ function syncTouchControls() {
  */
 var AI = {
   enabled: false,
-  lives: 24,
+  lives: 28,
   jumpT: 0,
   jumpCd: 0,
   dodgeT: 0,
@@ -1032,7 +1032,7 @@ function aiLiveMiniBoss() {
 function aiNearbyThreat(px) {
   for (var i = 0; i < ents.length; i++) {
     var e = ents[i];
-    if (e.dead || e.gone || e.k === "move" || e.k === "bird" || e.k === "cannon") continue;
+    if (e.dead || e.gone || e.k === "move" || e.k === "bird" || e.k === "cannon" || e.k === "miniboss") continue;
     var ex = e.x + e.w / 2;
     if (ex > px + 6 && ex < px + 110 && Math.abs(e.y + e.h - (PL.y + PL.h)) < 86) return e;
   }
@@ -1116,7 +1116,10 @@ function aiStartWallJump() {
 function aiJumpHoldFor(terrain) {
   var dist = terrain.target ? terrain.target.tx - terrain.col : terrain.distance + 2;
   var rise = terrain.target ? Math.max(0, terrain.feetRow - terrain.target.row) : 0;
-  if (terrain.kind === "高台") return clamp(0.3 + rise * 0.07, 0.3, 0.56);
+  if (terrain.kind === "高台") {
+    if (dist <= 2) return clamp(0.16 + rise * 0.045, 0.16, 0.38);
+    return clamp(0.3 + rise * 0.07, 0.3, 0.56);
+  }
   if (dist <= 3 && rise <= 1) return 0.15 + rise * 0.04;
   if (dist <= 5) return 0.3 + rise * 0.05;
   return clamp(0.36 + (dist - 5) * 0.035 + rise * 0.05, 0.36, 0.56);
@@ -1138,13 +1141,13 @@ function aiControlMovingBridge(terrain, px) {
   }
   var center = bridge.x + bridge.w / 2;
   var edge = (terrain.col + Math.max(1, terrain.distance)) * T;
-  if (px < edge - 22) {
+  if (px < edge - 34) {
     keys.right = true;
     AI.status = "靠近沟沿";
     return true;
   }
   keys.right = false;
-  keys.left = PL.vx > 30;
+  keys.left = true;
   var soon = (Math.sin((bridge.t + 0.25) * 1.4) + 1) / 2;
   var soonX = lerp(bridge.x1, bridge.x2, soon) + bridge.w / 2;
   var approaching = Math.abs(soonX - px) < Math.abs(center - px) - 4;
@@ -1217,16 +1220,17 @@ function updateAIMode(dt) {
     aiControlFinalBoss(px);
     return;
   }
+  var terrain = aiReadTerrain();
   if (!PL.ground && (PL.hitL || PL.hitR)) {
     var wallTx = PL.hitR ? Math.floor((PL.x + PL.w + 2) / T) : Math.floor((PL.x - 2) / T);
     var climb = 0;
     for (var wy = 0; wy < 13; wy++) if (solid(tileAt(wallTx, wy))) climb++;
-    if (climb >= 3 && aiStartWallJump()) {
+    var forwardLand = terrain.target && terrain.target.tx - terrain.col <= 7;
+    if (climb >= 3 && !forwardLand && aiStartWallJump()) {
       AI.status = "蹬墙";
       return;
     }
   }
-  var terrain = aiReadTerrain();
   var mini = aiLiveMiniBoss();
   if (
     mini &&
