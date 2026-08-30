@@ -762,24 +762,25 @@ function syncTouchControls() {
 }
 
 /*
- * AI 路线演示
- * ----------
- * 不是按关卡序号硬背按键：它每帧读取前方地形，辨认刺/岩浆/碎板/高台、
- * 可落脚的平台和移动平台，再选择跑、等、跳或在守关 Boss 前拉开距离。
- * 所有动作仍走正常的 keys + 物理 + 碰撞流程；AI 只是把玩家的按键输入
- * 换成了一个可见、可随时关闭的控制器。
+ * AI 路线
+ * ------
+ * 每帧读前方地形，辨认刺 / 岩浆 / 碎板 / 高台 / 移动平台，
+ * 再用和玩家完全一样的 keys + 物理 + 碰撞去跑、等、跳、蹬墙。
+ * 没有无敌，没有虚拟地板；踩刺会真死，再从检查点重试。
  */
 var AI = {
   enabled: false,
-  safety: true,
-  lives: 24,
+  lives: 16,
   jumpT: 0,
   jumpCd: 0,
   dodgeT: 0,
   stallT: 0,
   lastX: 0,
   landingX: 0,
+  landingY: 0,
   landingBrake: 0,
+  aimX: 0,
+  aimY: 0,
   retries: 0,
   status: "待命",
   detail: "",
@@ -801,10 +802,13 @@ function aiResetForLevel(fresh) {
   AI.stallT = 0;
   AI.lastX = PL.x;
   AI.landingX = 0;
+  AI.landingY = 0;
   AI.landingBrake = 0;
+  AI.aimX = 0;
+  AI.aimY = 0;
   AI.bossDir = -1;
   AI.retries = fresh ? 0 : AI.retries + 1;
-  AI.status = fresh ? "扫描地形" : "自动重试 " + AI.retries;
+  AI.status = fresh ? "扫描地形" : "重试 " + AI.retries;
   AI.detail = "";
 }
 function setAIMode(enabled) {
@@ -817,23 +821,18 @@ function setAIMode(enabled) {
     if (GS.state === "play" || GS.state === "bossintro") {
       GS.lives = Math.max(GS.lives, AI.lives);
       aiResetForLevel(true);
-      popText(PL.x + 14, PL.y - 62, "AI 接管：读取障碍路线 · 安全演示", "#8ad4ff");
+      popText(PL.x + 14, PL.y - 62, "AI 接管：读障碍起跳", "#8ad4ff");
     } else {
-      popText(W / 2, H / 2 - 80, "AI 路线演示已就绪", "#8ad4ff");
+      popText(W / 2, H / 2 - 80, "AI 已就绪：会跳，也会死", "#8ad4ff");
     }
   } else {
     AI.status = "手动操控";
     AI.detail = "";
+    AI.aimX = 0;
+    AI.aimY = 0;
     popText(PL.x + 14, PL.y - 52, "已切回手动操控", "#fff");
   }
   sClick();
-}
-function aiSafetyActive() {
-  /*
-   * 自动演示必须能完整展示路线，而不是在同一枚试错刺上反复读档。
-   * 安全线路只在 AI 接管期间启用；手动模式仍保留原本的一击必死设计。
-   */
-  return AI.enabled && AI.safety;
 }
 function aiFloorTile(c) {
   return solid(c) || c === 9 || c === 12 || c === 16;
@@ -841,18 +840,31 @@ function aiFloorTile(c) {
 function aiHazardTile(c) {
   return c === 10 || c === 11;
 }
-function aiSurfaceAt(tx) {
-  if (!curLV || tx < 0 || tx >= curLV.w) return null;
+function aiColumn(tx) {
+  if (!curLV || tx < 0 || tx >= curLV.w) return { surface: null, ceiling: false };
+  var ceiling = false;
+  var surface = null;
   for (var ty = 0; ty < curLV.h; ty++) {
     var c = tileAt(tx, ty);
-    if (aiHazardTile(c)) return { tx: tx, row: ty, tile: c, hazard: true };
-    if (aiFloorTile(c)) return { tx: tx, row: ty, tile: c, hazard: false };
+    if (c === 10 && ty <= 10) {
+      var below = tileAt(tx, ty + 1);
+      if (!solid(below) && below !== 9 && below !== 16 && below !== 10 && below !== 11) {
+        ceiling = true;
+        continue;
+      }
+    }
+    if (aiHazardTile(c) || aiFloorTile(c)) {
+      surface = { tx: tx, row: ty, tile: c, hazard: aiHazardTile(c) };
+      break;
+    }
   }
-  return null;
+  return { surface: surface, ceiling: ceiling };
+}
+function aiSurfaceAt(tx) {
+  return aiColumn(tx).surface;
 }
 function aiLandingOK(s) {
   if (!s || s.hazard || s.tile === 16) return false;
-  /* 一个角色高的净空；顶刺与墙下不算可选落点。 */
   for (var ty = Math.max(0, s.row - 1); ty >= Math.max(0, s.row - 2); ty--) {
     var c = tileAt(s.tx, ty);
     if (solid(c) || aiHazardTile(c)) return false;
@@ -866,94 +878,127 @@ function aiFindSafeLanding(fromTx, distance) {
   }
   return null;
 }
-function aiLandingX(s) {
-  if (!s) return 0;
-  /* 找同一高度的连续安全面中点；单格浮板则严格瞄准正中。 */
+function aiSpan(s) {
+  if (!s) return { left: 0, right: 0 };
   var left = s.tx;
   var right = s.tx;
-  while (left > s.tx - 3) {
+  while (left > s.tx - 4) {
     var ls = aiSurfaceAt(left - 1);
     if (!aiLandingOK(ls) || ls.row !== s.row) break;
     left--;
   }
-  while (right < s.tx + 3) {
+  while (right < s.tx + 4) {
     var rs = aiSurfaceAt(right + 1);
     if (!aiLandingOK(rs) || rs.row !== s.row) break;
     right++;
   }
-  return ((left + right + 1) * T) / 2;
+  return { left: left, right: right };
+}
+function aiLandingX(s) {
+  if (!s) return 0;
+  var span = aiSpan(s);
+  return ((span.left + span.right + 1) * T) / 2;
+}
+function aiLandingY(s) {
+  return s ? s.row * T : 12 * T;
+}
+function aiIsNarrow(s) {
+  if (!s || !aiLandingOK(s)) return false;
+  var span = aiSpan(s);
+  return span.right - span.left <= 0;
 }
 function aiWallAhead(col, feetRow) {
   var headRow = Math.max(0, Math.floor(PL.y / T));
   for (var d = 1; d <= 4; d++) {
     for (var ty = headRow; ty < feetRow; ty++) {
-      if (solid(tileAt(col + d, ty))) return { distance: d, row: ty };
+      if (solid(tileAt(col + d, ty))) return { distance: d, row: ty, tx: col + d };
     }
   }
   return null;
 }
-function aiCeilingAhead(col) {
-  var headRow = Math.floor(PL.y / T);
-  for (var d = 0; d <= 3; d++) {
-    /* 只把头顶上一行的刺当屋檐；脚下同高的刺是需要跳过的地面危险。 */
-    for (var ty = Math.max(0, headRow - 1); ty < headRow; ty++) {
-      if (tileAt(col + d, ty) === 10) return true;
-    }
+function aiWallTop(tx, feetRow) {
+  for (var ty = 0; ty < feetRow; ty++) {
+    var c = tileAt(tx, ty);
+    if (solid(c) || c === 9) return { tx: tx, row: ty, tile: c, hazard: false };
   }
-  return false;
+  return null;
+}
+function aiCeilingAhead(col) {
+  return aiColumn(col).ceiling || aiColumn(col + 1).ceiling || aiColumn(col + 2).ceiling;
 }
 function aiReadTerrain() {
   var px = PL.x + PL.w / 2;
   var col = Math.floor(px / T);
   var feetRow = Math.floor((PL.y + PL.h + 2) / T);
-  var current = aiSurfaceAt(col) || { tx: col, row: feetRow, tile: 1, hazard: false };
+  var here = aiColumn(col);
+  var current = here.surface || { tx: col, row: feetRow, tile: 1, hazard: false };
   var wall = aiWallAhead(col, feetRow);
   var firstRisk = null;
   var target = null;
-  for (var d = 1; d <= 14; d++) {
-    var s = aiSurfaceAt(col + d);
-    var risky = !s || s.hazard || s.tile === 16;
+  var ceiling = here.ceiling;
+  for (var d = 1; d <= 16; d++) {
+    var info = aiColumn(col + d);
+    if (info.ceiling) ceiling = true;
+    var s = info.surface;
+    var risky = !s || s.hazard;
     if (!firstRisk && risky) {
       firstRisk = {
         distance: d,
         surface: s,
-        kind: !s ? "断层" : s.tile === 16 ? "碎板" : s.tile === 11 ? "岩浆" : "尖刺",
+        kind: !s ? "断层" : s.tile === 11 ? "岩浆" : "尖刺",
       };
-      continue;
     }
-    if (firstRisk && aiLandingOK(s) && s.row <= current.row + 3) {
+    if (firstRisk && aiLandingOK(s) && s.row <= current.row + 4) {
+      target = s;
+      break;
+    }
+    if (!firstRisk && s && s.tile === 12) {
+      firstRisk = { distance: d, surface: s, kind: "弹簧" };
       target = s;
       break;
     }
   }
-  if (wall) {
-    var wallSurface = aiSurfaceAt(col + wall.distance);
+  if (wall && (!firstRisk || wall.distance <= firstRisk.distance)) {
+    var top = aiWallTop(wall.tx, feetRow);
     return {
       col: col,
       feetRow: feetRow,
-      ceiling: aiCeilingAhead(col),
+      ceiling: ceiling,
+      current: current,
       kind: "高台",
       distance: wall.distance,
-      target: aiLandingOK(wallSurface) ? wallSurface : null,
+      target: aiLandingOK(top) ? top : null,
+      narrow: aiIsNarrow(current),
     };
   }
   if (firstRisk) {
     return {
       col: col,
       feetRow: feetRow,
-      ceiling: aiCeilingAhead(col),
+      ceiling: ceiling,
+      current: current,
       kind: firstRisk.kind,
       distance: firstRisk.distance,
       target: target,
+      narrow: aiIsNarrow(current),
     };
   }
-  return { col: col, feetRow: feetRow, ceiling: aiCeilingAhead(col), kind: "平路", distance: 99, target: null };
+  return {
+    col: col,
+    feetRow: feetRow,
+    ceiling: ceiling,
+    current: current,
+    kind: "平路",
+    distance: 99,
+    target: null,
+    narrow: aiIsNarrow(current),
+  };
 }
 function aiMovingBridgeAhead(px) {
   var best = null;
   for (var i = 0; i < ents.length; i++) {
     var e = ents[i];
-    if (e.k !== "move" || e.x + e.w < px - T || e.x > px + 15 * T) continue;
+    if (e.k !== "move" || e.x + e.w < px - T || e.x > px + 16 * T) continue;
     if (!best || e.x < best.x) best = e;
   }
   return best;
@@ -968,25 +1013,67 @@ function aiLiveMiniBoss() {
 function aiNearbyThreat(px) {
   for (var i = 0; i < ents.length; i++) {
     var e = ents[i];
-    if (e.dead || e.gone || e.k === "move" || e.k === "bird") continue;
+    if (e.dead || e.gone || e.k === "move" || e.k === "bird" || e.k === "cannon") continue;
     var ex = e.x + e.w / 2;
-    if (ex > px + 8 && ex < px + 116 && Math.abs(e.y + e.h - (PL.y + PL.h)) < 86) return e;
+    if (ex > px + 6 && ex < px + 110 && Math.abs(e.y + e.h - (PL.y + PL.h)) < 86) return e;
   }
   return null;
+}
+function aiRavenOverhead(px) {
+  for (var i = 0; i < ents.length; i++) {
+    var e = ents[i];
+    if (e.dead || e.gone || (e.k !== "raven" && e.k !== "bird")) continue;
+    var ex = e.x + e.w / 2;
+    if (Math.abs(ex - px) < 88 && e.y < PL.y + 8 && e.y > PL.y - 150) return true;
+  }
+  return false;
 }
 function aiFireNearby(px) {
   for (var i = 0; i < fires.length; i++) {
     var f = fires[i];
-    if (Math.abs(f.x - px) < 120 && Math.abs(f.y - (PL.y + PL.h / 2)) < 84) return true;
+    var toward = (f.vx > 0 && f.x < px + 40) || (f.vx < 0 && f.x > px - 40);
+    if (toward && Math.abs(f.x - px) < 130 && Math.abs(f.y - (PL.y + PL.h / 2)) < 78) return true;
   }
   return false;
 }
+function aiOnCrumble() {
+  var tx0 = Math.floor((PL.x + 6) / T);
+  var tx1 = Math.floor((PL.x + PL.w - 6) / T);
+  var ty = Math.floor((PL.y + PL.h + 2) / T);
+  for (var tx = tx0; tx <= tx1; tx++) {
+    if (tileAt(tx, ty) === 16) {
+      var cr = crumbles[tx + "," + ty];
+      return { tx: tx, ty: ty, left: cr ? cr.t : 0.75 };
+    }
+  }
+  return null;
+}
+function aiSpringHere(col) {
+  for (var d = 0; d <= 1; d++) {
+    if (tileAt(col + d, 12) === 12) return true;
+    var s = aiSurfaceAt(col + d);
+    if (s && s.tile === 12) return true;
+  }
+  return false;
+}
+function aiSetAim(target) {
+  if (!target) {
+    AI.aimX = 0;
+    AI.aimY = 0;
+    return;
+  }
+  AI.aimX = aiLandingX(target);
+  AI.aimY = aiLandingY(target);
+}
 function aiStartJump(hold, target) {
-  if (!PL.ground || AI.jumpCd > 0) return false;
-  AI.jumpT = clamp(hold || 0.28, 0.15, 0.62);
-  AI.jumpCd = 0.18;
+  if (AI.jumpCd > 0) return false;
+  if (!PL.ground && PL.coyote <= 0) return false;
+  AI.jumpT = clamp(hold || 0.28, 0.14, 0.58);
+  AI.jumpCd = 0.07;
   AI.landingX = aiLandingX(target);
-  AI.landingBrake = target && target.tile === 9 ? T * 2 : AI.landingX ? T * 0.75 : 0;
+  AI.landingY = aiLandingY(target);
+  AI.landingBrake = target && (target.tile === 9 || aiIsNarrow(target)) ? T * 1.55 : AI.landingX ? T * 0.7 : 0;
+  aiSetAim(target);
   keys.jump = true;
   justPressed.jump = true;
   return true;
@@ -994,8 +1081,9 @@ function aiStartJump(hold, target) {
 function aiStartWallJump() {
   if (PL.ground || AI.jumpCd > 0 || (!PL.hitL && !PL.hitR)) return false;
   AI.jumpT = 0.34;
-  AI.jumpCd = 0.16;
+  AI.jumpCd = 0.12;
   AI.landingX = 0;
+  AI.landingY = 0;
   AI.landingBrake = 0;
   keys.left = !!PL.hitL;
   keys.right = !!PL.hitR;
@@ -1006,8 +1094,10 @@ function aiStartWallJump() {
 function aiJumpHoldFor(terrain) {
   var dist = terrain.target ? terrain.target.tx - terrain.col : terrain.distance + 2;
   var rise = terrain.target ? Math.max(0, terrain.feetRow - terrain.target.row) : 0;
-  /* 以落点距离而非“按得越久越好”计算：短刺后仍要能落回呼吸平台。 */
-  return clamp(0.16 + dist * 0.03 + rise * 0.06, 0.22, 0.56);
+  if (terrain.kind === "高台") return clamp(0.3 + rise * 0.07, 0.3, 0.56);
+  if (dist <= 3 && rise <= 1) return 0.26 + rise * 0.05;
+  if (dist <= 5) return 0.32 + rise * 0.05;
+  return clamp(0.2 + dist * 0.035 + rise * 0.06, 0.24, 0.56);
 }
 function aiControlMovingBridge(terrain, px) {
   var bridge = aiMovingBridgeAhead(px);
@@ -1017,41 +1107,44 @@ function aiControlMovingBridge(terrain, px) {
     var exit = aiFindSafeLanding(Math.floor((bridge.x + bridge.w) / T) + 1, 10);
     keys.right = true;
     keys.left = false;
-    if (exit && bridge.x + bridge.w > exit.tx * T - T * 2 && PL.ground) {
-      aiStartJump(0.5, exit);
-      AI.status = "摆渡到岸";
-    } else AI.status = "读取摆渡轨迹";
+    aiSetAim(exit);
+    if (exit && bridge.x + bridge.w > exit.tx * T - T * 2 && (PL.ground || PL.coyote > 0)) {
+      aiStartJump(0.46, exit);
+      AI.status = "摆渡起跳";
+    } else AI.status = "跟着平台走";
     return true;
   }
   var center = bridge.x + bridge.w / 2;
-  var edge = (terrain.col + terrain.distance) * T;
-  if (px < edge - 18) {
+  var edge = (terrain.col + Math.max(1, terrain.distance)) * T;
+  if (px < edge - 16) {
     keys.right = true;
-    AI.status = "靠近摆渡口";
+    AI.status = "靠近沟沿";
     return true;
   }
-  if (center - px > 6 * T) {
-    keys.right = false;
-    AI.status = "等待移动平台";
+  keys.right = false;
+  if (center - px > 5.2 * T) {
+    AI.status = "等平台回来";
     return true;
   }
-  keys.right = center >= px;
+  keys.right = center >= px - 8;
   keys.left = !keys.right;
-  if (PL.ground && Math.abs(center - px) < 6 * T) aiStartJump(0.5);
+  if ((PL.ground || PL.coyote > 0) && Math.abs(center - px) < 5.4 * T) {
+    aiStartJump(0.48, { tx: Math.floor(center / T), row: Math.floor(bridge.y / T), tile: 9, hazard: false });
+  }
   AI.status = "跳上移动平台";
   return true;
 }
 function aiControlMiniBoss(b, px) {
   var dx = b.x + b.w / 2 - px;
   keys.run = true;
-  if (dx > 280) {
+  if (dx > 260) {
     keys.right = true;
     keys.left = false;
     AI.status = "接近守关 Boss";
-  } else if (dx < 180) {
+  } else if (dx < 170) {
     keys.left = true;
     keys.right = false;
-    AI.status = "拉开距离自动开火";
+    AI.status = "拉开距离开火";
   } else {
     keys.left = false;
     keys.right = false;
@@ -1059,8 +1152,8 @@ function aiControlMiniBoss(b, px) {
   }
   AI.dodgeT -= 1 / 60;
   if ((aiFireNearby(px) || AI.dodgeT <= 0) && !aiCeilingAhead(Math.floor(px / T))) {
-    aiStartJump(0.27);
-    AI.dodgeT = 0.85;
+    aiStartJump(0.26);
+    AI.dodgeT = 0.9;
   }
 }
 function aiControlFinalBoss(px) {
@@ -1084,10 +1177,10 @@ function aiControlFinalBoss(px) {
     b.state === "slamJump" ||
     aiFireNearby(px);
   if ((mustJump || AI.dodgeT <= 0) && !aiCeilingAhead(Math.floor(px / T))) {
-    aiStartJump(0.32);
-    AI.dodgeT = 0.8;
+    aiStartJump(0.3);
+    AI.dodgeT = 0.85;
   }
-  AI.status = b.state === "recover" || b.state === "stun" ? "Boss 破防：自动输出" : "躲避 " + (b.next || b.state);
+  AI.status = b.state === "recover" || b.state === "stun" ? "Boss 破防：输出" : "跳躲 " + (b.next || b.state);
 }
 function updateAIMode(dt) {
   if (!AI.enabled || GS.state !== "play") return;
@@ -1103,7 +1196,7 @@ function updateAIMode(dt) {
     return;
   }
   if (!PL.ground && (PL.hitL || PL.hitR) && aiStartWallJump()) {
-    AI.status = "贴墙：连续蹬墙";
+    AI.status = "蹬墙";
     return;
   }
   var mini = aiLiveMiniBoss();
@@ -1113,58 +1206,112 @@ function updateAIMode(dt) {
   }
   var terrain = aiReadTerrain();
   var foe = aiNearbyThreat(px);
+  var crumble = aiOnCrumble();
   keys.right = true;
-  /*
-   * 安全演示把会反复读档的试错地形化为可走的路线，因此刺海、熔岩和
-   * 碎桥可以被完整展示；高台仍必须按真实跳跃/蹬墙逻辑通过。
-   */
-  if (aiSafetyActive() && terrain.kind !== "高台") {
-    AI.status = terrain.kind === "平路" ? "扫描前方地形" : "安全线路越过" + terrain.kind;
-    return;
+  if (terrain.target) aiSetAim(terrain.target);
+  else if (terrain.kind === "平路") {
+    AI.aimX = 0;
+    AI.aimY = 0;
   }
   if (
     (terrain.kind === "断层" || terrain.kind === "尖刺" || terrain.kind === "岩浆") &&
-    (!terrain.target || terrain.target.tx - terrain.col > 9)
+    (!terrain.target || terrain.target.tx - terrain.col > 8)
   ) {
     if (aiControlMovingBridge(terrain, px)) return;
   }
-  if (PL.ground) {
-    if (terrain.ceiling && terrain.kind !== "平路") {
-      AI.status = "低头穿过顶刺";
-    } else if (foe) {
-      aiStartJump(0.3);
-      AI.status = "踩过拦路怪";
-    } else if (terrain.kind !== "平路" && terrain.distance <= 4) {
-      aiStartJump(aiJumpHoldFor(terrain), terrain.target);
-      AI.status = terrain.kind + " → 计算起跳";
-    } else {
-      AI.status = terrain.ceiling ? "低位安全通行" : "扫描前方地形";
+  if (!PL.ground) {
+    if (AI.landingX) {
+      if (px > AI.landingX - AI.landingBrake) {
+        keys.left = true;
+        keys.right = false;
+      } else if (px < AI.landingX - T * 0.35) {
+        keys.right = true;
+      }
     }
-  } else if (AI.landingX) {
-    var tx = AI.landingX;
-    if (px > tx - AI.landingBrake) {
-      keys.left = true;
-      keys.right = false;
-    }
-  }
-  if (PL.ground) {
-    if (AI.landingX && Math.abs(px - AI.landingX) < T * 1.35) {
-      AI.landingX = 0;
-      AI.landingBrake = 0;
-    }
-    if (PL.x < AI.lastX + 3) AI.stallT += dt;
-    else {
-      AI.lastX = PL.x;
-      AI.stallT = 0;
-    }
-    if (AI.stallT > 0.65 && !terrain.ceiling) {
-      aiStartJump(0.38);
-      AI.stallT = 0;
-      AI.status = "受阻：调整起跳";
-    }
-  } else {
     AI.stallT = 0;
     AI.lastX = Math.max(AI.lastX, PL.x);
+    return;
+  }
+  if (AI.landingX && Math.abs(px - AI.landingX) < T * 1.2) {
+    AI.landingX = 0;
+    AI.landingY = 0;
+    AI.landingBrake = 0;
+  }
+  if (aiSpringHere(terrain.col)) {
+    keys.jump = true;
+    justPressed.jump = true;
+    AI.jumpT = 0.55;
+    AI.status = "借弹簧";
+    return;
+  }
+  if (crumble) {
+    keys.run = true;
+    keys.right = true;
+    if (crumble.left < 0.28) {
+      aiStartJump(0.4, terrain.target || aiFindSafeLanding(terrain.col + 1, 8));
+      AI.status = "碎板将塌：跳走";
+    } else AI.status = "冲过碎板";
+    return;
+  }
+  if (terrain.ceiling && (terrain.kind === "平路" || terrain.kind === "尖刺" || terrain.kind === "岩浆")) {
+    var floorHazard = terrain.kind !== "平路" && terrain.distance <= 1 && terrain.current && terrain.current.hazard;
+    if (!floorHazard) {
+      keys.jump = false;
+      AI.jumpT = 0;
+      AI.status = "低头过顶刺";
+      if (aiFireNearby(px)) keys.right = false;
+      return;
+    }
+  }
+  if (aiRavenOverhead(px) && terrain.kind === "平路") {
+    keys.jump = false;
+    AI.status = "鸦下低走";
+    return;
+  }
+  if (aiFireNearby(px)) {
+    if (terrain.ceiling) {
+      keys.right = false;
+      AI.status = "等炮弹";
+      return;
+    }
+    aiStartJump(0.28, terrain.target);
+    AI.status = "跳过炮弹";
+    return;
+  }
+  if (foe && !terrain.ceiling) {
+    aiStartJump(0.28);
+    AI.status = "踩怪";
+    return;
+  }
+  var mustJump = terrain.kind !== "平路" && terrain.kind !== "弹簧";
+  var lastSafe = terrain.distance <= (terrain.target && terrain.target.tx - terrain.col >= 6 ? 2 : 1);
+  if (terrain.narrow && mustJump) lastSafe = true;
+  if (mustJump && lastSafe && !terrain.ceiling) {
+    aiStartJump(aiJumpHoldFor(terrain), terrain.target);
+    AI.status = "跳过" + terrain.kind;
+    return;
+  }
+  if (terrain.kind === "弹簧" && terrain.distance <= 1) {
+    keys.jump = true;
+    AI.jumpT = 0.55;
+    AI.status = "踏上弹簧";
+    return;
+  }
+  if (terrain.narrow && mustJump && AI.jumpCd > 0) {
+    keys.right = false;
+    AI.status = "板上等跳";
+    return;
+  }
+  AI.status = terrain.ceiling ? "低头前行" : mustJump ? "助跑起跳" : "向前扫障碍";
+  if (PL.x < AI.lastX + 2) AI.stallT += dt;
+  else {
+    AI.lastX = PL.x;
+    AI.stallT = 0;
+  }
+  if (AI.stallT > 0.55 && !terrain.ceiling) {
+    aiStartJump(0.36, terrain.target);
+    AI.stallT = 0;
+    AI.status = "卡住了：再跳";
   }
 }
 function markCleared(i) {
@@ -1487,11 +1634,6 @@ function startLevel(i) {
 /* ============ 玩家 ============ */
 function damagePlayer() {
   if (PL.inv > 0 || PL.dead || GS.state !== "play") return;
-  if (aiSafetyActive()) {
-    /* AI 安全线路吸收一次误判；仍会显示路线与正常物理移动。 */
-    PL.inv = 0.12;
-    return;
-  }
   if (PL.star > 0) return;
   if (PL.big) {
     PL.big = false;
@@ -2078,14 +2220,7 @@ function collideY(o) {
       var surfaceY = ty * T;
       for (var tx = tx0; tx <= tx1; tx++) {
         var c = tileAt(tx, ty);
-        /*
-         * AI 安全线路在试错地形上铺一条与原地面齐平的虚拟脚线：
-         * 刺坑的刺在第 11 行，正确脚线是第 12 行；岩浆本身从第
-         * 12 行开始，顶面就是第 12 行。这样演示路线不会因尖刺
-         * 碰撞面的高度差卡进坑里。
-         */
-        var aiRouteFloor = aiSafetyActive() && (c === 9 || c === 10 || c === 11 || c === 16);
-        var contactY = aiRouteFloor ? 12 * T : surfaceY;
+        var contactY = surfaceY;
         if (prevBottom > contactY + 8) continue;
         if (c === 12 && o === PL) {
           o.y = surfaceY - o.h - 0.01;
@@ -2120,19 +2255,12 @@ function collideY(o) {
           sBreak();
           continue;
         }
-        if (
-          aiRouteFloor ||
-          c === 10 ||
-          c === 16 ||
-          solid(c) ||
-          (c === 11 && aiSafetyActive()) ||
-          (c === 9 && prevBottom <= surfaceY + 6)
-        ) {
+        if (c === 10 || c === 16 || solid(c) || (c === 9 && prevBottom <= surfaceY + 6)) {
           o.y = contactY - o.h - 0.01;
           o.vy = 0;
           o.ground = true;
           o.hitB = true;
-          if (c === 16 && o === PL && !aiSafetyActive()) triggerCrumble(tx, ty);
+          if (c === 16 && o === PL) triggerCrumble(tx, ty);
           break;
         }
       }
@@ -2143,16 +2271,6 @@ function collideY(o) {
       o.ground = true;
       o.hitB = true;
       o._onPlat = platformHit;
-    }
-    /*
-     * AI 演示的安全线路会在地图原始地面高度提供一条投影脚线，处理
-     * 窄板之间恰好没有同高刺块的空档。手动模式不会走到这里。
-     */
-    if (!o.hitB && o === PL && aiSafetyActive() && nextBottom >= 12 * T) {
-      o.y = 12 * T - o.h - 0.01;
-      o.vy = 0;
-      o.ground = true;
-      o.hitB = true;
     }
   } else if (o.vy < 0) {
     var prevTop = o.prevY,
@@ -2359,7 +2477,7 @@ function hazardCheck() {
         return;
       }
       if (c === 11) {
-        if (PL.star > 0 || aiSafetyActive()) {
+        if (PL.star > 0) {
           popText(PL.x + 14, PL.y - 20, "岩浆:不怕!", "#5ad4ff");
           return;
         }
@@ -3166,10 +3284,7 @@ function updateShots(dt) {
     s.y += (s.vy || 0) * dt;
     if (s.mesh) s.mesh.position.set(worldX(s.x), worldY(s.y), 1.4);
     var gone =
-      (!aiSafetyActive() && solid(tileAt(Math.floor(s.x / T), Math.floor(s.y / T)))) ||
-      s.t > 1.4 ||
-      s.x < camX - 120 ||
-      s.x > camX + W + 120;
+      solid(tileAt(Math.floor(s.x / T), Math.floor(s.y / T))) || s.t > 1.4 || s.x < camX - 120 || s.x > camX + W + 120;
     if (!gone) {
       for (var e = 0; e < ents.length; e++) {
         var en = ents[e];
@@ -5784,7 +5899,7 @@ function drawHUD2D(c) {
   c.textAlign = "center";
   c.fillStyle = AI.enabled ? "#07121f" : "#d8edff";
   c.font = "bold 12px " + FONT;
-  c.fillText(AI.enabled ? "AI 安全 · " + AI.status : "AI 路线演示 · I", AI_UI.x + AI_UI.w / 2, AI_UI.y + 18);
+  c.fillText(AI.enabled ? "AI · " + AI.status : "AI 读障起跳 · I", AI_UI.x + AI_UI.w / 2, AI_UI.y + 18);
   c.restore();
   c.textAlign = "left";
   hintText(
@@ -5884,37 +5999,31 @@ function drawNoWebGL() {
   ctx.fillText("请使用较新的 Chrome / Edge / Firefox / Safari", W / 2, H / 2 + 10);
 }
 function drawFX2D() {
-  /*
-   * 可见的青色引导线对应 AI safety projection 的脚线，避免把“能持续
-   * 展示路线”的容错误解成手动关卡被改简单了。
-   */
-  if (aiSafetyActive() && curLV && (GS.state === "play" || GS.state === "bossintro")) {
-    var guideY = 12 * T - 5;
-    var guideStart = PL.x - camX - 80;
-    var guideEnd = Math.min(W + 60, PL.x - camX + 260);
+  if (AI.enabled && curLV && GS.state === "play" && (AI.aimX || AI.landingX)) {
+    var fromX = PL.x + PL.w / 2 - camX;
+    var fromY = PL.y + PL.h;
+    var toX = (AI.landingX || AI.aimX) - camX;
+    var toY = AI.landingY || AI.aimY || fromY;
+    var midX = (fromX + toX) / 2;
+    var midY = Math.min(fromY, toY) - 64;
     ctx.save();
-    ctx.globalAlpha = 0.78;
+    ctx.globalAlpha = 0.82;
     ctx.strokeStyle = "#92efff";
     ctx.lineWidth = 2;
-    ctx.setLineDash([8, 7]);
-    ctx.lineDashOffset = -GT * 90;
+    ctx.setLineDash([7, 6]);
+    ctx.lineDashOffset = -GT * 80;
     ctx.beginPath();
-    ctx.moveTo(guideStart, guideY);
-    ctx.lineTo(guideEnd, guideY);
+    ctx.moveTo(fromX, fromY);
+    ctx.quadraticCurveTo(midX, midY, toX, toY);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = "#d4fbff";
     ctx.font = "bold 10px " + FONT;
-    ctx.textAlign = "left";
-    ctx.fillText("AI 安全线路", Math.max(12, guideStart), guideY - 10);
-    if (AI.landingX) {
-      var targetX = AI.landingX - camX;
-      ctx.strokeStyle = "#ffd86a";
-      ctx.beginPath();
-      ctx.moveTo(targetX, guideY - 54);
-      ctx.lineTo(targetX, guideY + 5);
-      ctx.stroke();
-    }
+    ctx.textAlign = "center";
+    ctx.fillText("落点", toX, toY - 10);
+    ctx.beginPath();
+    ctx.arc(toX, toY, 4, 0, TAU);
+    ctx.fill();
     ctx.restore();
   }
   if (!THREE_OK) {
@@ -6551,7 +6660,7 @@ function drawSelect2D(c) {
   c.font = "bold 16px " + FONT;
   c.fillText(AI.enabled ? "AI 已接管" : "AI 路线演示", aiX + aiW / 2, aiY + 24);
   c.font = "11px " + FONT;
-  c.fillText(AI.enabled ? "安全演示 · 点此切回手动" : "点此启动智能通关", aiX + aiW / 2, aiY + 43);
+  c.fillText(AI.enabled ? "读障碍起跳 · 点此切回手动" : "点此启动智能通关", aiX + aiW / 2, aiY + 43);
   setSelectHit(SEL_UI.start, startX, startY, startW, startH);
   rr(c, startX, startY, startW, startH, 16);
   c.fillStyle = isUnlocked(GS.selIdx) ? "#ffd23f" : "#4a4c56";
