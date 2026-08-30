@@ -3394,6 +3394,19 @@ function handleClear(dt) {
     if (Math.random() < 0.3) sClick();
   }
   if (GS.clearT > 2.6) {
+    /*
+     * AI 演示每次只验证当前所选关，回到同一张卡片方便观看者确认
+     * 「本关已通关」标记，而不是快速掠过数个世界造成突兀跳场。
+     */
+    if (AI.enabled) {
+      aiReleaseKeys();
+      AI.status = "本关已验证";
+      GS.selIdx = GS.li;
+      GS.state = "select";
+      makeSky();
+      sClick();
+      return;
+    }
     var nx = GS.li + 1;
     if (nx < LEVELS.length) loadLevel(nx, true);
     else {
