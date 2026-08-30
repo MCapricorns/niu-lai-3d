@@ -770,7 +770,7 @@ function syncTouchControls() {
  */
 var AI = {
   enabled: false,
-  lives: 16,
+  lives: 20,
   jumpT: 0,
   jumpCd: 0,
   dodgeT: 0,
@@ -778,7 +778,8 @@ var AI = {
   lastX: 0,
   landingX: 0,
   landingY: 0,
-  landingBrake: 0,
+  landingLeft: 0,
+  landingRight: 0,
   aimX: 0,
   aimY: 0,
   retries: 0,
@@ -803,7 +804,8 @@ function aiResetForLevel(fresh) {
   AI.lastX = PL.x;
   AI.landingX = 0;
   AI.landingY = 0;
-  AI.landingBrake = 0;
+  AI.landingLeft = 0;
+  AI.landingRight = 0;
   AI.aimX = 0;
   AI.aimY = 0;
   AI.bossDir = -1;
@@ -1070,9 +1072,11 @@ function aiStartJump(hold, target) {
   if (!PL.ground && PL.coyote <= 0) return false;
   AI.jumpT = clamp(hold || 0.28, 0.14, 0.58);
   AI.jumpCd = 0.07;
+  var span = target ? aiSpan(target) : null;
   AI.landingX = aiLandingX(target);
   AI.landingY = aiLandingY(target);
-  AI.landingBrake = target && (target.tile === 9 || aiIsNarrow(target)) ? T * 1.55 : AI.landingX ? T * 0.7 : 0;
+  AI.landingLeft = span ? span.left * T : 0;
+  AI.landingRight = span ? (span.right + 1) * T : 0;
   aiSetAim(target);
   keys.jump = true;
   justPressed.jump = true;
@@ -1084,7 +1088,8 @@ function aiStartWallJump() {
   AI.jumpCd = 0.12;
   AI.landingX = 0;
   AI.landingY = 0;
-  AI.landingBrake = 0;
+  AI.landingLeft = 0;
+  AI.landingRight = 0;
   keys.left = !!PL.hitL;
   keys.right = !!PL.hitR;
   keys.jump = true;
@@ -1095,9 +1100,9 @@ function aiJumpHoldFor(terrain) {
   var dist = terrain.target ? terrain.target.tx - terrain.col : terrain.distance + 2;
   var rise = terrain.target ? Math.max(0, terrain.feetRow - terrain.target.row) : 0;
   if (terrain.kind === "高台") return clamp(0.3 + rise * 0.07, 0.3, 0.56);
-  if (dist <= 3 && rise <= 1) return 0.26 + rise * 0.05;
-  if (dist <= 5) return 0.32 + rise * 0.05;
-  return clamp(0.2 + dist * 0.035 + rise * 0.06, 0.24, 0.56);
+  if (dist <= 3 && rise <= 1) return 0.15 + rise * 0.04;
+  if (dist <= 5) return 0.3 + rise * 0.05;
+  return clamp(0.36 + (dist - 5) * 0.035 + rise * 0.05, 0.36, 0.56);
 }
 function aiControlMovingBridge(terrain, px) {
   var bridge = aiMovingBridgeAhead(px);
@@ -1122,14 +1127,14 @@ function aiControlMovingBridge(terrain, px) {
     return true;
   }
   keys.right = false;
-  if (center - px > 5.2 * T) {
+  if (center - px > 3.4 * T) {
     AI.status = "等平台回来";
     return true;
   }
   keys.right = center >= px - 8;
   keys.left = !keys.right;
-  if ((PL.ground || PL.coyote > 0) && Math.abs(center - px) < 5.4 * T) {
-    aiStartJump(0.48, { tx: Math.floor(center / T), row: Math.floor(bridge.y / T), tile: 9, hazard: false });
+  if ((PL.ground || PL.coyote > 0) && Math.abs(center - px) < 3.6 * T) {
+    aiStartJump(0.42, { tx: Math.floor(center / T), row: Math.floor(bridge.y / T), tile: 9, hazard: false });
   }
   AI.status = "跳上移动平台";
   return true;
@@ -1150,10 +1155,8 @@ function aiControlMiniBoss(b, px) {
     keys.right = false;
     AI.status = "锁定守关 Boss";
   }
-  AI.dodgeT -= 1 / 60;
-  if ((aiFireNearby(px) || AI.dodgeT <= 0) && !aiCeilingAhead(Math.floor(px / T))) {
-    aiStartJump(0.26);
-    AI.dodgeT = 0.9;
+  if (aiFireNearby(px) && !aiCeilingAhead(Math.floor(px / T))) {
+    aiStartJump(0.24);
   }
 }
 function aiControlFinalBoss(px) {
@@ -1169,16 +1172,14 @@ function aiControlFinalBoss(px) {
   else if (px >= 29 * T) AI.bossDir = -1;
   keys.left = AI.bossDir < 0;
   keys.right = AI.bossDir > 0;
-  AI.dodgeT -= 1 / 60;
   var mustJump =
     (b.state === "beam" && b.beamRow === 10) ||
     b.state === "dash" ||
     b.state === "fire" ||
     b.state === "slamJump" ||
     aiFireNearby(px);
-  if ((mustJump || AI.dodgeT <= 0) && !aiCeilingAhead(Math.floor(px / T))) {
+  if (mustJump && !aiCeilingAhead(Math.floor(px / T))) {
     aiStartJump(0.3);
-    AI.dodgeT = 0.85;
   }
   AI.status = b.state === "recover" || b.state === "stun" ? "Boss 破防：输出" : "跳躲 " + (b.next || b.state);
 }
@@ -1199,12 +1200,18 @@ function updateAIMode(dt) {
     AI.status = "蹬墙";
     return;
   }
+  var terrain = aiReadTerrain();
   var mini = aiLiveMiniBoss();
-  if (mini && mini.x - px < 11 * T) {
+  if (
+    mini &&
+    mini.x - px < 8 * T &&
+    terrain.kind === "平路" &&
+    !terrain.ceiling &&
+    Math.abs(PL.y + PL.h - (mini.y + mini.h)) < 70
+  ) {
     aiControlMiniBoss(mini, px);
     return;
   }
-  var terrain = aiReadTerrain();
   var foe = aiNearbyThreat(px);
   var crumble = aiOnCrumble();
   keys.right = true;
@@ -1220,22 +1227,34 @@ function updateAIMode(dt) {
     if (aiControlMovingBridge(terrain, px)) return;
   }
   if (!PL.ground) {
-    if (AI.landingX) {
-      if (px > AI.landingX - AI.landingBrake) {
+    if (AI.landingX && AI.landingLeft) {
+      if (px >= AI.landingLeft) {
+        AI.jumpT = 0;
+        keys.jump = false;
+      }
+      if (px < AI.landingLeft - 4) {
+        keys.right = true;
+        keys.left = false;
+        keys.run = true;
+      } else if (px > AI.landingRight - 4) {
         keys.left = true;
         keys.right = false;
-      } else if (px < AI.landingX - T * 0.35) {
-        keys.right = true;
+        keys.run = false;
+      } else {
+        keys.run = false;
+        keys.right = px < AI.landingX - 6 && PL.vx < 80;
+        keys.left = PL.vx > 50;
       }
     }
     AI.stallT = 0;
     AI.lastX = Math.max(AI.lastX, PL.x);
     return;
   }
-  if (AI.landingX && Math.abs(px - AI.landingX) < T * 1.2) {
+  if (AI.landingX && AI.landingLeft && px >= AI.landingLeft && px <= AI.landingRight) {
     AI.landingX = 0;
     AI.landingY = 0;
-    AI.landingBrake = 0;
+    AI.landingLeft = 0;
+    AI.landingRight = 0;
   }
   if (aiSpringHere(terrain.col)) {
     keys.jump = true;
@@ -1283,8 +1302,13 @@ function updateAIMode(dt) {
     AI.status = "踩怪";
     return;
   }
-  var mustJump = terrain.kind !== "平路" && terrain.kind !== "弹簧";
-  var lastSafe = terrain.distance <= (terrain.target && terrain.target.tx - terrain.col >= 6 ? 2 : 1);
+  var dropping =
+    terrain.target && terrain.current && terrain.target.row > terrain.current.row && terrain.kind === "断层";
+  var mustJump = terrain.kind !== "平路" && terrain.kind !== "弹簧" && !dropping;
+  var span = terrain.target ? terrain.target.tx - terrain.col : terrain.distance + 3;
+  var trigger = span >= 4 ? 2 : 1;
+  if (terrain.kind === "高台") trigger = Math.max(trigger, 2);
+  var lastSafe = terrain.distance <= trigger;
   if (terrain.narrow && mustJump) lastSafe = true;
   if (mustJump && lastSafe && !terrain.ceiling) {
     aiStartJump(aiJumpHoldFor(terrain), terrain.target);
