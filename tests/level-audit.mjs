@@ -1,5 +1,7 @@
 import fs from "node:fs";
+/* Load the same tile table that levels.js receives in the browser runtime. */
 global.window = {};
+new Function("window", fs.readFileSync("mapengine.js", "utf8"))(window);
 const code = fs.readFileSync("levels.js", "utf8");
 new Function("window", code)(window);
 const LEVELS = window.createNiuLaiLevels(6.283185307);

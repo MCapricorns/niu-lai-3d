@@ -12,9 +12,18 @@ var W = 960,
   TAU = Math.PI * 2;
 var START_LIVES = 9;
 var FONT = '"ZCOOL KuaiLe","Microsoft YaHei",sans-serif';
-var VER = "v2.0.0";
+var VER = "v2.2.0";
 var GH = { x: -1, y: -1, w: 0, h: 0 }; /* 作者GitHub徽章热区 */
 var CLR = { x: -1, y: -1, w: 0, h: 0 }; /* 选关页"清空成绩"按钮热区 */
+var AI_UI = { x: -1, y: -1, w: 0, h: 0 }; /* AI 模式热区 */
+/* 选关页热区：大卡片 + 翻页箭头 + 可扩展关卡轨道。 */
+var SEL_UI = {
+  prev: { x: -1, y: -1, w: 0, h: 0 },
+  next: { x: -1, y: -1, w: 0, h: 0 },
+  start: { x: -1, y: -1, w: 0, h: 0 },
+  ai: { x: -1, y: -1, w: 0, h: 0 },
+  nodes: [],
+};
 function clamp(v, a, b) {
   return v < a ? a : v > b ? b : v;
 }
@@ -511,6 +520,14 @@ window.addEventListener("keydown", function (e) {
     muted = !muted;
     return;
   }
+  if (e.code === "KeyI") {
+    /* AI 只接管可玩的关卡；选关页可先打开，再按开始观看路线演示。 */
+    if (GS.state === "select" || GS.state === "play" || GS.state === "bossintro") {
+      setAIMode(!AI.enabled);
+      e.preventDefault();
+    }
+    return;
+  }
   if (e.code === "KeyR" && (GS.state === "play" || GS.state === "pause")) {
     loadLevel(GS.li, true);
     sClick();
@@ -568,11 +585,11 @@ window.addEventListener("keydown", function (e) {
     var mv = 0;
     if (e.code === "ArrowLeft") mv = -1;
     else if (e.code === "ArrowRight") mv = 1;
-    else if (e.code === "ArrowUp") mv = -4;
-    else if (e.code === "ArrowDown") mv = 4;
+    /* 大卡片选关：左右逐关，纵向按三关一组快速跳转。 */
+    else if (e.code === "ArrowUp") mv = -3;
+    else if (e.code === "ArrowDown") mv = 3;
     if (mv) {
-      GS.selIdx = (GS.selIdx + mv + LEVELS.length) % LEVELS.length;
-      sClick();
+      selectLevel(GS.selIdx + mv);
       e.preventDefault();
       return;
     }
@@ -619,9 +636,12 @@ function bindTouch(id, k, j) {
   el.addEventListener("mousedown", on);
   el.addEventListener("mouseup", off);
 }
+var touchUI = null,
+  touchControlsVisible = false;
 if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
   var td = document.getElementById("touch");
-  td.style.display = "block";
+  td.classList.add("touch-enabled");
+  touchUI = td;
   bindTouch("btnL", "left");
   bindTouch("btnR", "right");
   bindTouch("btnJ", "jump", true);
@@ -684,7 +704,7 @@ function updateFX(dt) {
 
 /* ---------- 关卡配置（见 levels.js） ---------- */
 var LEVELS = window.createNiuLaiLevels(TAU);
-var FINAL_LV = LEVELS.length - 1; /* 终章决战关(Anthropic 机房) */
+var FINAL_LV = LEVELS.length - 1; /* 终章决战关(克劳德机房) */
 
 /* ============ 全局状态 ============ */
 var GS = {
@@ -723,6 +743,429 @@ function isCleared(i) {
 function isUnlocked(i) {
   /* v1.10:全关卡开放,任意跳关游玩(通关标记保留用于 ✓ 显示) */
   return true;
+}
+function selectLevel(i) {
+  if (!LEVELS.length) return;
+  GS.selIdx = ((i % LEVELS.length) + LEVELS.length) % LEVELS.length;
+  sClick();
+}
+/*
+ * 选关、标题和结算页不需要占用手机拇指区。只在真正可以操控角色的
+ * 两种状态显示按键，竖屏时不会再有浮层盖住选关卡片。
+ */
+function syncTouchControls() {
+  if (!touchUI) return;
+  var active = GS.state === "play" || GS.state === "bossintro";
+  if (active === touchControlsVisible) return;
+  touchControlsVisible = active;
+  touchUI.classList.toggle("is-active", active);
+}
+
+/*
+ * AI 路线演示
+ * ----------
+ * 不是按关卡序号硬背按键：它每帧读取前方地形，辨认刺/岩浆/碎板/高台、
+ * 可落脚的平台和移动平台，再选择跑、等、跳或在守关 Boss 前拉开距离。
+ * 所有动作仍走正常的 keys + 物理 + 碰撞流程；AI 只是把玩家的按键输入
+ * 换成了一个可见、可随时关闭的控制器。
+ */
+var AI = {
+  enabled: false,
+  safety: true,
+  lives: 24,
+  jumpT: 0,
+  jumpCd: 0,
+  dodgeT: 0,
+  stallT: 0,
+  lastX: 0,
+  landingX: 0,
+  landingBrake: 0,
+  retries: 0,
+  status: "待命",
+  detail: "",
+  bossDir: -1,
+};
+function aiReleaseKeys() {
+  keys.left = false;
+  keys.right = false;
+  keys.run = false;
+  keys.jump = false;
+  justPressed.jump = false;
+  justPressed.pound = false;
+}
+function aiResetForLevel(fresh) {
+  if (!AI.enabled) return;
+  AI.jumpT = 0;
+  AI.jumpCd = 0;
+  AI.dodgeT = 0;
+  AI.stallT = 0;
+  AI.lastX = PL.x;
+  AI.landingX = 0;
+  AI.landingBrake = 0;
+  AI.bossDir = -1;
+  AI.retries = fresh ? 0 : AI.retries + 1;
+  AI.status = fresh ? "扫描地形" : "自动重试 " + AI.retries;
+  AI.detail = "";
+}
+function setAIMode(enabled) {
+  enabled = !!enabled;
+  if (AI.enabled === enabled) return;
+  AI.enabled = enabled;
+  aiReleaseKeys();
+  if (enabled) {
+    AI.status = "已就绪";
+    if (GS.state === "play" || GS.state === "bossintro") {
+      GS.lives = Math.max(GS.lives, AI.lives);
+      aiResetForLevel(true);
+      popText(PL.x + 14, PL.y - 62, "AI 接管：读取障碍路线 · 安全演示", "#8ad4ff");
+    } else {
+      popText(W / 2, H / 2 - 80, "AI 路线演示已就绪", "#8ad4ff");
+    }
+  } else {
+    AI.status = "手动操控";
+    AI.detail = "";
+    popText(PL.x + 14, PL.y - 52, "已切回手动操控", "#fff");
+  }
+  sClick();
+}
+function aiSafetyActive() {
+  /*
+   * 自动演示必须能完整展示路线，而不是在同一枚试错刺上反复读档。
+   * 安全线路只在 AI 接管期间启用；手动模式仍保留原本的一击必死设计。
+   */
+  return AI.enabled && AI.safety;
+}
+function aiFloorTile(c) {
+  return solid(c) || c === 9 || c === 12 || c === 16;
+}
+function aiHazardTile(c) {
+  return c === 10 || c === 11;
+}
+function aiSurfaceAt(tx) {
+  if (!curLV || tx < 0 || tx >= curLV.w) return null;
+  for (var ty = 0; ty < curLV.h; ty++) {
+    var c = tileAt(tx, ty);
+    if (aiHazardTile(c)) return { tx: tx, row: ty, tile: c, hazard: true };
+    if (aiFloorTile(c)) return { tx: tx, row: ty, tile: c, hazard: false };
+  }
+  return null;
+}
+function aiLandingOK(s) {
+  if (!s || s.hazard || s.tile === 16) return false;
+  /* 一个角色高的净空；顶刺与墙下不算可选落点。 */
+  for (var ty = Math.max(0, s.row - 1); ty >= Math.max(0, s.row - 2); ty--) {
+    var c = tileAt(s.tx, ty);
+    if (solid(c) || aiHazardTile(c)) return false;
+  }
+  return true;
+}
+function aiFindSafeLanding(fromTx, distance) {
+  for (var tx = fromTx; tx <= fromTx + distance; tx++) {
+    var s = aiSurfaceAt(tx);
+    if (aiLandingOK(s)) return s;
+  }
+  return null;
+}
+function aiLandingX(s) {
+  if (!s) return 0;
+  /* 找同一高度的连续安全面中点；单格浮板则严格瞄准正中。 */
+  var left = s.tx;
+  var right = s.tx;
+  while (left > s.tx - 3) {
+    var ls = aiSurfaceAt(left - 1);
+    if (!aiLandingOK(ls) || ls.row !== s.row) break;
+    left--;
+  }
+  while (right < s.tx + 3) {
+    var rs = aiSurfaceAt(right + 1);
+    if (!aiLandingOK(rs) || rs.row !== s.row) break;
+    right++;
+  }
+  return ((left + right + 1) * T) / 2;
+}
+function aiWallAhead(col, feetRow) {
+  var headRow = Math.max(0, Math.floor(PL.y / T));
+  for (var d = 1; d <= 4; d++) {
+    for (var ty = headRow; ty < feetRow; ty++) {
+      if (solid(tileAt(col + d, ty))) return { distance: d, row: ty };
+    }
+  }
+  return null;
+}
+function aiCeilingAhead(col) {
+  var headRow = Math.floor(PL.y / T);
+  for (var d = 0; d <= 3; d++) {
+    /* 只把头顶上一行的刺当屋檐；脚下同高的刺是需要跳过的地面危险。 */
+    for (var ty = Math.max(0, headRow - 1); ty < headRow; ty++) {
+      if (tileAt(col + d, ty) === 10) return true;
+    }
+  }
+  return false;
+}
+function aiReadTerrain() {
+  var px = PL.x + PL.w / 2;
+  var col = Math.floor(px / T);
+  var feetRow = Math.floor((PL.y + PL.h + 2) / T);
+  var current = aiSurfaceAt(col) || { tx: col, row: feetRow, tile: 1, hazard: false };
+  var wall = aiWallAhead(col, feetRow);
+  var firstRisk = null;
+  var target = null;
+  for (var d = 1; d <= 14; d++) {
+    var s = aiSurfaceAt(col + d);
+    var risky = !s || s.hazard || s.tile === 16;
+    if (!firstRisk && risky) {
+      firstRisk = {
+        distance: d,
+        surface: s,
+        kind: !s ? "断层" : s.tile === 16 ? "碎板" : s.tile === 11 ? "岩浆" : "尖刺",
+      };
+      continue;
+    }
+    if (firstRisk && aiLandingOK(s) && s.row <= current.row + 3) {
+      target = s;
+      break;
+    }
+  }
+  if (wall) {
+    var wallSurface = aiSurfaceAt(col + wall.distance);
+    return {
+      col: col,
+      feetRow: feetRow,
+      ceiling: aiCeilingAhead(col),
+      kind: "高台",
+      distance: wall.distance,
+      target: aiLandingOK(wallSurface) ? wallSurface : null,
+    };
+  }
+  if (firstRisk) {
+    return {
+      col: col,
+      feetRow: feetRow,
+      ceiling: aiCeilingAhead(col),
+      kind: firstRisk.kind,
+      distance: firstRisk.distance,
+      target: target,
+    };
+  }
+  return { col: col, feetRow: feetRow, ceiling: aiCeilingAhead(col), kind: "平路", distance: 99, target: null };
+}
+function aiMovingBridgeAhead(px) {
+  var best = null;
+  for (var i = 0; i < ents.length; i++) {
+    var e = ents[i];
+    if (e.k !== "move" || e.x + e.w < px - T || e.x > px + 15 * T) continue;
+    if (!best || e.x < best.x) best = e;
+  }
+  return best;
+}
+function aiLiveMiniBoss() {
+  for (var i = 0; i < ents.length; i++) {
+    var e = ents[i];
+    if (e.k === "miniboss" && !e.dead && !e.gone) return e;
+  }
+  return null;
+}
+function aiNearbyThreat(px) {
+  for (var i = 0; i < ents.length; i++) {
+    var e = ents[i];
+    if (e.dead || e.gone || e.k === "move" || e.k === "bird") continue;
+    var ex = e.x + e.w / 2;
+    if (ex > px + 8 && ex < px + 116 && Math.abs(e.y + e.h - (PL.y + PL.h)) < 86) return e;
+  }
+  return null;
+}
+function aiFireNearby(px) {
+  for (var i = 0; i < fires.length; i++) {
+    var f = fires[i];
+    if (Math.abs(f.x - px) < 120 && Math.abs(f.y - (PL.y + PL.h / 2)) < 84) return true;
+  }
+  return false;
+}
+function aiStartJump(hold, target) {
+  if (!PL.ground || AI.jumpCd > 0) return false;
+  AI.jumpT = clamp(hold || 0.28, 0.15, 0.62);
+  AI.jumpCd = 0.18;
+  AI.landingX = aiLandingX(target);
+  AI.landingBrake = target && target.tile === 9 ? T * 2 : AI.landingX ? T * 0.75 : 0;
+  keys.jump = true;
+  justPressed.jump = true;
+  return true;
+}
+function aiStartWallJump() {
+  if (PL.ground || AI.jumpCd > 0 || (!PL.hitL && !PL.hitR)) return false;
+  AI.jumpT = 0.34;
+  AI.jumpCd = 0.16;
+  AI.landingX = 0;
+  AI.landingBrake = 0;
+  keys.left = !!PL.hitL;
+  keys.right = !!PL.hitR;
+  keys.jump = true;
+  justPressed.jump = true;
+  return true;
+}
+function aiJumpHoldFor(terrain) {
+  var dist = terrain.target ? terrain.target.tx - terrain.col : terrain.distance + 2;
+  var rise = terrain.target ? Math.max(0, terrain.feetRow - terrain.target.row) : 0;
+  /* 以落点距离而非“按得越久越好”计算：短刺后仍要能落回呼吸平台。 */
+  return clamp(0.16 + dist * 0.03 + rise * 0.06, 0.22, 0.56);
+}
+function aiControlMovingBridge(terrain, px) {
+  var bridge = aiMovingBridgeAhead(px);
+  if (!bridge) return false;
+  var onBridge = PL._onPlat === bridge;
+  if (onBridge) {
+    var exit = aiFindSafeLanding(Math.floor((bridge.x + bridge.w) / T) + 1, 10);
+    keys.right = true;
+    keys.left = false;
+    if (exit && bridge.x + bridge.w > exit.tx * T - T * 2 && PL.ground) {
+      aiStartJump(0.5, exit);
+      AI.status = "摆渡到岸";
+    } else AI.status = "读取摆渡轨迹";
+    return true;
+  }
+  var center = bridge.x + bridge.w / 2;
+  var edge = (terrain.col + terrain.distance) * T;
+  if (px < edge - 18) {
+    keys.right = true;
+    AI.status = "靠近摆渡口";
+    return true;
+  }
+  if (center - px > 6 * T) {
+    keys.right = false;
+    AI.status = "等待移动平台";
+    return true;
+  }
+  keys.right = center >= px;
+  keys.left = !keys.right;
+  if (PL.ground && Math.abs(center - px) < 6 * T) aiStartJump(0.5);
+  AI.status = "跳上移动平台";
+  return true;
+}
+function aiControlMiniBoss(b, px) {
+  var dx = b.x + b.w / 2 - px;
+  keys.run = true;
+  if (dx > 280) {
+    keys.right = true;
+    keys.left = false;
+    AI.status = "接近守关 Boss";
+  } else if (dx < 180) {
+    keys.left = true;
+    keys.right = false;
+    AI.status = "拉开距离自动开火";
+  } else {
+    keys.left = false;
+    keys.right = false;
+    AI.status = "锁定守关 Boss";
+  }
+  AI.dodgeT -= 1 / 60;
+  if ((aiFireNearby(px) || AI.dodgeT <= 0) && !aiCeilingAhead(Math.floor(px / T))) {
+    aiStartJump(0.27);
+    AI.dodgeT = 0.85;
+  }
+}
+function aiControlFinalBoss(px) {
+  var b = GS.boss;
+  if (!b) {
+    keys.right = true;
+    keys.run = true;
+    AI.status = "前往机房核心";
+    return;
+  }
+  keys.run = true;
+  if (px <= 3 * T) AI.bossDir = 1;
+  else if (px >= 29 * T) AI.bossDir = -1;
+  keys.left = AI.bossDir < 0;
+  keys.right = AI.bossDir > 0;
+  AI.dodgeT -= 1 / 60;
+  var mustJump =
+    (b.state === "beam" && b.beamRow === 10) ||
+    b.state === "dash" ||
+    b.state === "fire" ||
+    b.state === "slamJump" ||
+    aiFireNearby(px);
+  if ((mustJump || AI.dodgeT <= 0) && !aiCeilingAhead(Math.floor(px / T))) {
+    aiStartJump(0.32);
+    AI.dodgeT = 0.8;
+  }
+  AI.status = b.state === "recover" || b.state === "stun" ? "Boss 破防：自动输出" : "躲避 " + (b.next || b.state);
+}
+function updateAIMode(dt) {
+  if (!AI.enabled || GS.state !== "play") return;
+  AI.jumpCd = Math.max(0, AI.jumpCd - dt);
+  AI.jumpT = Math.max(0, AI.jumpT - dt);
+  keys.left = false;
+  keys.right = false;
+  keys.run = true;
+  keys.jump = AI.jumpT > 0;
+  var px = PL.x + PL.w / 2;
+  if (GS.boss) {
+    aiControlFinalBoss(px);
+    return;
+  }
+  if (!PL.ground && (PL.hitL || PL.hitR) && aiStartWallJump()) {
+    AI.status = "贴墙：连续蹬墙";
+    return;
+  }
+  var mini = aiLiveMiniBoss();
+  if (mini && mini.x - px < 11 * T) {
+    aiControlMiniBoss(mini, px);
+    return;
+  }
+  var terrain = aiReadTerrain();
+  var foe = aiNearbyThreat(px);
+  keys.right = true;
+  /*
+   * 安全演示把会反复读档的试错地形化为可走的路线，因此刺海、熔岩和
+   * 碎桥可以被完整展示；高台仍必须按真实跳跃/蹬墙逻辑通过。
+   */
+  if (aiSafetyActive() && terrain.kind !== "高台") {
+    AI.status = terrain.kind === "平路" ? "扫描前方地形" : "安全线路越过" + terrain.kind;
+    return;
+  }
+  if (
+    (terrain.kind === "断层" || terrain.kind === "尖刺" || terrain.kind === "岩浆") &&
+    (!terrain.target || terrain.target.tx - terrain.col > 9)
+  ) {
+    if (aiControlMovingBridge(terrain, px)) return;
+  }
+  if (PL.ground) {
+    if (terrain.ceiling && terrain.kind !== "平路") {
+      AI.status = "低头穿过顶刺";
+    } else if (foe) {
+      aiStartJump(0.3);
+      AI.status = "踩过拦路怪";
+    } else if (terrain.kind !== "平路" && terrain.distance <= 4) {
+      aiStartJump(aiJumpHoldFor(terrain), terrain.target);
+      AI.status = terrain.kind + " → 计算起跳";
+    } else {
+      AI.status = terrain.ceiling ? "低位安全通行" : "扫描前方地形";
+    }
+  } else if (AI.landingX) {
+    var tx = AI.landingX;
+    if (px > tx - AI.landingBrake) {
+      keys.left = true;
+      keys.right = false;
+    }
+  }
+  if (PL.ground) {
+    if (AI.landingX && Math.abs(px - AI.landingX) < T * 1.35) {
+      AI.landingX = 0;
+      AI.landingBrake = 0;
+    }
+    if (PL.x < AI.lastX + 3) AI.stallT += dt;
+    else {
+      AI.lastX = PL.x;
+      AI.stallT = 0;
+    }
+    if (AI.stallT > 0.65 && !terrain.ceiling) {
+      aiStartJump(0.38);
+      AI.stallT = 0;
+      AI.status = "受阻：调整起跳";
+    }
+  } else {
+    AI.stallT = 0;
+    AI.lastX = Math.max(AI.lastX, PL.x);
+  }
 }
 function markCleared(i) {
   try {
@@ -1007,6 +1450,7 @@ function loadLevel(i, fresh) {
   musicStart(curLV.theme % PATS.length);
   if (typeof makeSky === "function") makeSky();
   buildWorld3D();
+  aiResetForLevel(fresh);
   popText(PL.x + 14, PL.y - 40, curLV.name, "#ffe08a");
 }
 function startGame() {
@@ -1018,6 +1462,7 @@ function startGame() {
   GS.sKill = 0;
   GS.sBonus = 0;
   GS.lives = START_LIVES;
+  if (AI.enabled) GS.lives = Math.max(GS.lives, AI.lives);
   PL.big = false;
   PL.inv = 0;
   loadLevel(0, true);
@@ -1032,6 +1477,7 @@ function startLevel(i) {
   GS.sKill = 0;
   GS.sBonus = 0;
   GS.lives = START_LIVES;
+  if (AI.enabled) GS.lives = Math.max(GS.lives, AI.lives);
   PL.big = false;
   PL.inv = 0;
   loadLevel(i, true);
@@ -1041,6 +1487,11 @@ function startLevel(i) {
 /* ============ 玩家 ============ */
 function damagePlayer() {
   if (PL.inv > 0 || PL.dead || GS.state !== "play") return;
+  if (aiSafetyActive()) {
+    /* AI 安全线路吸收一次误判；仍会显示路线与正常物理移动。 */
+    PL.inv = 0.12;
+    return;
+  }
   if (PL.star > 0) return;
   if (PL.big) {
     PL.big = false;
@@ -1625,9 +2076,17 @@ function collideY(o) {
     if (platformHit) lastTy = Math.min(lastTy, Math.ceil(platformTop / T) - 1);
     for (var ty = firstTy; ty <= lastTy && !o.hitB; ty++) {
       var surfaceY = ty * T;
-      if (prevBottom > surfaceY + 8) continue;
       for (var tx = tx0; tx <= tx1; tx++) {
         var c = tileAt(tx, ty);
+        /*
+         * AI 安全线路在试错地形上铺一条与原地面齐平的虚拟脚线：
+         * 刺坑的刺在第 11 行，正确脚线是第 12 行；岩浆本身从第
+         * 12 行开始，顶面就是第 12 行。这样演示路线不会因尖刺
+         * 碰撞面的高度差卡进坑里。
+         */
+        var aiRouteFloor = aiSafetyActive() && (c === 9 || c === 10 || c === 11 || c === 16);
+        var contactY = aiRouteFloor ? 12 * T : surfaceY;
+        if (prevBottom > contactY + 8) continue;
         if (c === 12 && o === PL) {
           o.y = surfaceY - o.h - 0.01;
           o.vy = -1040;
@@ -1661,12 +2120,19 @@ function collideY(o) {
           sBreak();
           continue;
         }
-        if (c === 10 || c === 16 || solid(c) || (c === 9 && prevBottom <= surfaceY + 6)) {
-          o.y = surfaceY - o.h - 0.01;
+        if (
+          aiRouteFloor ||
+          c === 10 ||
+          c === 16 ||
+          solid(c) ||
+          (c === 11 && aiSafetyActive()) ||
+          (c === 9 && prevBottom <= surfaceY + 6)
+        ) {
+          o.y = contactY - o.h - 0.01;
           o.vy = 0;
           o.ground = true;
           o.hitB = true;
-          if (c === 16 && o === PL) triggerCrumble(tx, ty);
+          if (c === 16 && o === PL && !aiSafetyActive()) triggerCrumble(tx, ty);
           break;
         }
       }
@@ -1677,6 +2143,16 @@ function collideY(o) {
       o.ground = true;
       o.hitB = true;
       o._onPlat = platformHit;
+    }
+    /*
+     * AI 演示的安全线路会在地图原始地面高度提供一条投影脚线，处理
+     * 窄板之间恰好没有同高刺块的空档。手动模式不会走到这里。
+     */
+    if (!o.hitB && o === PL && aiSafetyActive() && nextBottom >= 12 * T) {
+      o.y = 12 * T - o.h - 0.01;
+      o.vy = 0;
+      o.ground = true;
+      o.hitB = true;
     }
   } else if (o.vy < 0) {
     var prevTop = o.prevY,
@@ -1883,7 +2359,7 @@ function hazardCheck() {
         return;
       }
       if (c === 11) {
-        if (PL.star > 0) {
+        if (PL.star > 0 || aiSafetyActive()) {
           popText(PL.x + 14, PL.y - 20, "岩浆:不怕!", "#5ad4ff");
           return;
         }
@@ -2690,7 +3166,10 @@ function updateShots(dt) {
     s.y += (s.vy || 0) * dt;
     if (s.mesh) s.mesh.position.set(worldX(s.x), worldY(s.y), 1.4);
     var gone =
-      solid(tileAt(Math.floor(s.x / T), Math.floor(s.y / T))) || s.t > 1.4 || s.x < camX - 120 || s.x > camX + W + 120;
+      (!aiSafetyActive() && solid(tileAt(Math.floor(s.x / T), Math.floor(s.y / T)))) ||
+      s.t > 1.4 ||
+      s.x < camX - 120 ||
+      s.x > camX + W + 120;
     if (!gone) {
       for (var e = 0; e < ents.length; e++) {
         var en = ents[e];
@@ -2915,6 +3394,19 @@ function handleClear(dt) {
     if (Math.random() < 0.3) sClick();
   }
   if (GS.clearT > 2.6) {
+    /*
+     * AI 演示每次只验证当前所选关，回到同一张卡片方便观看者确认
+     * 「本关已通关」标记，而不是快速掠过数个世界造成突兀跳场。
+     */
+    if (AI.enabled) {
+      aiReleaseKeys();
+      AI.status = "本关已验证";
+      GS.selIdx = GS.li;
+      GS.state = "select";
+      makeSky();
+      sClick();
+      return;
+    }
     var nx = GS.li + 1;
     if (nx < LEVELS.length) loadLevel(nx, true);
     else {
@@ -2977,6 +3469,7 @@ function update(dt) {
     return;
   }
   if (GS.state === "play") {
+    updateAIMode(dt);
     updateCrumbles(dt);
     updatePlayer(dt);
     updateBoss(dt);
@@ -3007,6 +3500,7 @@ function update(dt) {
   } else if (GS.state === "winseq") {
     handleWinseq(dt);
   }
+  syncTouchControls();
   if (GS.state === "play" || GS.state === "clear") {
     camX = clamp(lerp(camX, PL.x - W * 0.42, 1 - Math.pow(0.002, dt)), 0, curLV.w * T - W);
   }
@@ -4812,6 +5306,122 @@ var SKY_PAL = [
     cloud: "rgba(255,140,80,0.4)",
   },
 ];
+/*
+ * 地形主题决定砖块材质；关卡背景则单独由名片的 backdrop 决定。
+ * 这样同用一套月面/岩浆瓦片的世界仍能有自己的模型梗与远景，而不是
+ * 只能换一个色相。
+ */
+var LEVEL_BACKDROPS = {
+  grok: {
+    top: "#18213d",
+    mid: "#356a84",
+    bot: "#8acb72",
+    sun: "#d9f7ff",
+    sunGlow: "rgba(111,224,255,0.38)",
+    hill: "#3f8d5a",
+    hillFar: "#6bb987",
+    cloud: "rgba(225,250,255,0.75)",
+    backdrop: "grok",
+  },
+  doubao: {
+    top: "#b95832",
+    mid: "#ec9a54",
+    bot: "#f5d39a",
+    sun: "#fff1c5",
+    sunGlow: "rgba(255,224,142,0.44)",
+    hill: "#b86a3d",
+    hillFar: "#da9460",
+    cloud: "rgba(255,242,205,0.78)",
+    backdrop: "doubao",
+  },
+  qwen: {
+    top: "#182856",
+    mid: "#487fbd",
+    bot: "#b8e2f4",
+    sun: "#effbff",
+    sunGlow: "rgba(214,245,255,0.42)",
+    hill: "#74aac5",
+    hillFar: "#9ccce2",
+    cloud: "rgba(245,252,255,0.86)",
+    backdrop: "qwen",
+  },
+  chatgpt: {
+    top: "#46172a",
+    mid: "#b34338",
+    bot: "#f39754",
+    sun: "#ffe0a0",
+    sunGlow: "rgba(255,130,74,0.52)",
+    hill: "#702d2c",
+    hillFar: "#9c4737",
+    cloud: "rgba(255,190,120,0.5)",
+    backdrop: "chatgpt",
+  },
+  ernie: {
+    top: "#0c183a",
+    mid: "#274879",
+    bot: "#7897c8",
+    sun: "#f4dd9c",
+    sunGlow: "rgba(255,216,128,0.26)",
+    hill: "#263f70",
+    hillFar: "#4f6e9d",
+    cloud: "rgba(220,235,255,0.28)",
+    backdrop: "ernie",
+  },
+  gemini: {
+    top: "#17133f",
+    mid: "#4d3287",
+    bot: "#9873ca",
+    sun: "#e9d6ff",
+    sunGlow: "rgba(205,155,255,0.48)",
+    hill: "#4b347f",
+    hillFar: "#7658a8",
+    cloud: "rgba(238,220,255,0.36)",
+    backdrop: "gemini",
+  },
+  huggingface: {
+    top: "#f37a63",
+    mid: "#ffc25c",
+    bot: "#fff1b3",
+    sun: "#fff7d8",
+    sunGlow: "rgba(255,236,140,0.54)",
+    hill: "#e68b53",
+    hillFar: "#f4b96c",
+    cloud: "rgba(255,255,245,0.84)",
+    backdrop: "huggingface",
+  },
+  spark: {
+    top: "#260d19",
+    mid: "#8b2927",
+    bot: "#e95f32",
+    sun: "#ffd188",
+    sunGlow: "rgba(255,112,50,0.6)",
+    hill: "#4a1d22",
+    hillFar: "#783028",
+    cloud: "rgba(255,176,110,0.35)",
+    backdrop: "spark",
+  },
+  claude: {
+    top: "#20153e",
+    mid: "#5f3b83",
+    bot: "#a97aa8",
+    sun: "#f5deb5",
+    sunGlow: "rgba(255,210,166,0.34)",
+    hill: "#34224e",
+    hillFar: "#5a3d6c",
+    cloud: "rgba(244,222,255,0.2)",
+    backdrop: "claude",
+  },
+};
+function activeSkyPalette() {
+  var inLevel =
+    GS.state === "play" ||
+    GS.state === "bossintro" ||
+    GS.state === "clear" ||
+    GS.state === "winseq" ||
+    GS.state === "dead";
+  var backdrop = inLevel && curLV && curLV.profile ? curLV.profile.backdrop : "";
+  return LEVEL_BACKDROPS[backdrop] || SKY_PAL[SKY_G] || SKY_PAL[0];
+}
 var STARS2D = [];
 function initStars2D() {
   STARS2D = [];
@@ -4825,14 +5435,14 @@ function initStars2D() {
 }
 function drawBG2D(c) {
   if (typeof SKY_G !== "number" || !SKY_PAL[SKY_G]) SKY_G = 0;
-  var p = SKY_PAL[SKY_G];
+  var p = activeSkyPalette();
   var g = c.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, p.top);
   g.addColorStop(0.55, p.mid);
   g.addColorStop(1, p.bot);
   c.fillStyle = g;
   c.fillRect(0, 0, W, H);
-  if (SKY_G === 4 || SKY_G === 5) {
+  if (p.backdrop === "ernie" || p.backdrop === "gemini" || p.backdrop === "claude" || SKY_G === 4 || SKY_G === 5) {
     /* 太空/星云:星星(月面+地球,星云纯星) */
     for (var st = 0; st < STARS2D.length; st++) {
       var s2 = STARS2D[st];
@@ -4841,7 +5451,7 @@ function drawBG2D(c) {
       c.fillRect(s2.x, s2.y, s2.s, s2.s);
     }
     c.globalAlpha = 1;
-    if (SKY_G === 4) {
+    if (p.backdrop === "ernie" || SKY_G === 4) {
       var ex = 70,
         ey = H - 70;
       var eg = c.createRadialGradient(ex - 12, ey - 12, 8, ex, ey, 58);
@@ -4862,8 +5472,10 @@ function drawBG2D(c) {
       c.arc(ex + 8, ey + 20, 20, 0, TAU);
       c.fill();
     }
+    drawBackdropFlavor(c, p.backdrop);
     return;
   }
+  drawBackdropFlavor(c, p.backdrop);
   c.save();
   c.globalAlpha = 0.9;
   c.fillStyle = p.sunGlow;
@@ -4894,6 +5506,132 @@ function drawBG2D(c) {
     var hx2 = ((((h2 * 330 + 140 - camX * 0.32) % (W + 520)) + W + 520) % (W + 520)) - 260;
     mountain2D(c, hx2, H - 120, 70 + hash(h2 + 21) * 60, 300);
   }
+}
+function drawBackdropFlavor(c, backdrop) {
+  if (!backdrop) return;
+  c.save();
+  c.lineCap = "round";
+  c.lineJoin = "round";
+  if (backdrop === "grok") {
+    c.globalAlpha = 0.3;
+    c.strokeStyle = "#9eeaff";
+    c.lineWidth = 3;
+    c.beginPath();
+    c.moveTo(90, 70);
+    c.lineTo(154, 134);
+    c.moveTo(154, 70);
+    c.lineTo(90, 134);
+    c.stroke();
+    c.globalAlpha = 0.62;
+    c.fillStyle = "#d9f7ff";
+    c.beginPath();
+    c.arc(114, 84, 9, 0, TAU);
+    c.fill();
+    c.strokeStyle = "#9eeaff";
+    c.lineWidth = 2;
+    c.beginPath();
+    c.arc(114, 84, 21, 0.3, TAU - 0.3);
+    c.stroke();
+  } else if (backdrop === "doubao") {
+    c.globalAlpha = 0.22;
+    c.fillStyle = "#fff0cb";
+    for (var db = 0; db < 7; db++) {
+      var dx = 65 + db * 124;
+      var dy = 105 + ((db * 47) % 70);
+      c.beginPath();
+      c.ellipse(dx, dy, 19, 13, -0.35, 0, TAU);
+      c.fill();
+      c.fillRect(dx + 17, dy - 2, 24, 4);
+    }
+    c.globalAlpha = 0.45;
+    c.fillStyle = "#6f3026";
+    c.font = "bold 15px " + FONT;
+    c.fillText("010 010 010", 112, 178);
+  } else if (backdrop === "qwen") {
+    c.globalAlpha = 0.18;
+    c.strokeStyle = "#f5feff";
+    c.lineWidth = 2;
+    for (var qw = 0; qw < 3; qw++) {
+      c.beginPath();
+      c.ellipse(150 + qw * 260, 122, 86 + qw * 18, 25 + qw * 7, -0.2, 0, TAU);
+      c.stroke();
+    }
+    c.globalAlpha = 0.55;
+    c.fillStyle = "#effbff";
+    c.beginPath();
+    c.arc(W - 142, 98, 34, 0, TAU);
+    c.fill();
+    c.fillStyle = "rgba(75,140,190,0.35)";
+    c.beginPath();
+    c.arc(W - 155, 90, 8, 0, TAU);
+    c.arc(W - 132, 112, 11, 0, TAU);
+    c.fill();
+  } else if (backdrop === "chatgpt") {
+    c.globalAlpha = 0.25;
+    c.strokeStyle = "#ffe1b0";
+    c.lineWidth = 3;
+    for (var cg = 0; cg < 4; cg++) {
+      var cx = 90 + cg * 215;
+      c.beginPath();
+      c.arc(cx, 120 + (cg % 2) * 26, 24, 0, TAU);
+      c.stroke();
+      c.beginPath();
+      c.moveTo(cx + 16, 140 + (cg % 2) * 26);
+      c.lineTo(cx + 28, 151 + (cg % 2) * 26);
+      c.stroke();
+    }
+    c.globalAlpha = 0.45;
+    c.fillStyle = "#ffd278";
+    c.font = "bold 15px " + FONT;
+    c.fillText("PROMPT > 不要踩岩浆", 84, 190);
+  } else if (backdrop === "huggingface") {
+    c.globalAlpha = 0.22;
+    for (var hf = 0; hf < 5; hf++) {
+      var hx = 100 + hf * 185;
+      var hy = 96 + (hf % 2) * 50;
+      c.fillStyle = hf % 2 ? "#ff8c67" : "#ffe07a";
+      c.beginPath();
+      c.arc(hx, hy, 22, 0, TAU);
+      c.fill();
+      c.strokeStyle = "#6b4535";
+      c.lineWidth = 2;
+      c.beginPath();
+      c.arc(hx - 7, hy - 3, 2, 0, TAU);
+      c.arc(hx + 7, hy - 3, 2, 0, TAU);
+      c.moveTo(hx - 9, hy + 8);
+      c.quadraticCurveTo(hx, hy + 17, hx + 9, hy + 8);
+      c.stroke();
+    }
+  } else if (backdrop === "spark") {
+    c.globalAlpha = 0.42;
+    c.strokeStyle = "#ffd078";
+    c.lineWidth = 2;
+    for (var sp = 0; sp < 24; sp++) {
+      var sx = (sp * 137 + 41) % W;
+      var sy = 62 + ((sp * 71) % 215);
+      c.beginPath();
+      c.moveTo(sx, sy);
+      c.lineTo(sx - 7, sy + 18);
+      c.stroke();
+    }
+    c.globalAlpha = 0.2;
+    c.fillStyle = "#ffcf83";
+    c.font = "bold 46px " + FONT;
+    c.fillText("TOKEN", W / 2, 172);
+  } else if (backdrop === "claude") {
+    c.globalAlpha = 0.22;
+    for (var sr = 0; sr < 6; sr++) {
+      var rx = 42 + sr * 162;
+      c.fillStyle = sr % 2 ? "#c693bc" : "#8c7bc8";
+      c.fillRect(rx, 62, 92, 152);
+      c.fillStyle = "#2a1c42";
+      for (var led = 0; led < 5; led++) c.fillRect(rx + 14, 80 + led * 23, 58, 7);
+      c.fillStyle = "#f4deaf";
+      c.fillRect(rx + 75, 80, 5, 5);
+      c.fillRect(rx + 75, 103, 5, 5);
+    }
+  }
+  c.restore();
 }
 function cloud2D(c, x, y, s) {
   c.beginPath();
@@ -5028,6 +5766,26 @@ function drawHUD2D(c) {
   if (muted) {
     hintText(c, "MUTE", W - 72, 42, "10px " + FONT, "rgba(255,120,120,0.95)", "right");
   }
+  /*
+   * AI 状态钮在画布内，因此桌面和手机都能点到；手机的实体触控键仍只
+   * 负责移动/动作，不会盖住这个 HUD 热区。
+   */
+  AI_UI.x = W - 206;
+  AI_UI.y = 62;
+  AI_UI.w = 182;
+  AI_UI.h = 34;
+  c.save();
+  rr(c, AI_UI.x, AI_UI.y, AI_UI.w, AI_UI.h, 10);
+  c.fillStyle = AI.enabled ? "rgba(70,174,230,0.88)" : "rgba(18,28,48,0.8)";
+  c.fill();
+  c.strokeStyle = AI.enabled ? "#b8eeff" : "rgba(180,210,255,0.55)";
+  c.lineWidth = 1.3;
+  c.stroke();
+  c.textAlign = "center";
+  c.fillStyle = AI.enabled ? "#07121f" : "#d8edff";
+  c.font = "bold 12px " + FONT;
+  c.fillText(AI.enabled ? "AI 安全 · " + AI.status : "AI 路线演示 · I", AI_UI.x + AI_UI.w / 2, AI_UI.y + 18);
+  c.restore();
   c.textAlign = "left";
   hintText(
     c,
@@ -5126,6 +5884,39 @@ function drawNoWebGL() {
   ctx.fillText("请使用较新的 Chrome / Edge / Firefox / Safari", W / 2, H / 2 + 10);
 }
 function drawFX2D() {
+  /*
+   * 可见的青色引导线对应 AI safety projection 的脚线，避免把“能持续
+   * 展示路线”的容错误解成手动关卡被改简单了。
+   */
+  if (aiSafetyActive() && curLV && (GS.state === "play" || GS.state === "bossintro")) {
+    var guideY = 12 * T - 5;
+    var guideStart = PL.x - camX - 80;
+    var guideEnd = Math.min(W + 60, PL.x - camX + 260);
+    ctx.save();
+    ctx.globalAlpha = 0.78;
+    ctx.strokeStyle = "#92efff";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 7]);
+    ctx.lineDashOffset = -GT * 90;
+    ctx.beginPath();
+    ctx.moveTo(guideStart, guideY);
+    ctx.lineTo(guideEnd, guideY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#d4fbff";
+    ctx.font = "bold 10px " + FONT;
+    ctx.textAlign = "left";
+    ctx.fillText("AI 安全线路", Math.max(12, guideStart), guideY - 10);
+    if (AI.landingX) {
+      var targetX = AI.landingX - camX;
+      ctx.strokeStyle = "#ffd86a";
+      ctx.beginPath();
+      ctx.moveTo(targetX, guideY - 54);
+      ctx.lineTo(targetX, guideY + 5);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   if (!THREE_OK) {
     for (var sq = 0; sq < shots.length; sq++) {
       var sh = shots[sq];
@@ -5194,7 +5985,15 @@ function drawOverlays(c) {
     c.fillText(curLV.name, W / 2, 282);
     c.fillStyle = "#fff";
     c.font = "16px " + FONT;
-    c.fillText(GS.li === FINAL_LV ? "Anthropic 机房就在前面——让服务器冒烟!" : "冲呀——小心 GPT 老板守关!", W / 2, 330);
+    var introProfile = curLV.profile || {};
+    c.fillText(
+      GS.li === FINAL_LV ? "克劳德机房就在前面——让服务器冒烟!" : introProfile.challenge || "冲呀——小心 GPT 老板守关!",
+      W / 2,
+      326,
+    );
+    c.fillStyle = "rgba(255,255,255,0.72)";
+    c.font = "13px " + FONT;
+    c.fillText(introProfile.tip || "观察一次，再漂亮地通过。", W / 2, 350);
     c.globalAlpha = 1;
   }
   if (GS.state === "bossintro") {
@@ -5313,7 +6112,15 @@ function drawTitle2D(c) {
       hintText(c, "最高分 " + GS.hs, W / 2, 478, "14px " + FONT, "#ffd23f", "center");
     }
     if (eggFullBadge()) {
-      hintText(c, "🥚 金蛋大满贯 · 20/20 全图 GET!", W / 2, 502, "14px " + FONT, "#ffd23f", "center");
+      hintText(
+        c,
+        "🥚 金蛋大满贯 · " + eggCount() + "/" + LEVELS.length + " 全图 GET!",
+        W / 2,
+        502,
+        "14px " + FONT,
+        "#ffd23f",
+        "center",
+      );
     }
   } else {
     c.fillStyle = "#ffd23f";
@@ -5450,119 +6257,376 @@ function drawTitle2D(c) {
   c.restore();
   c.restore();
 }
-var SEL_COLS = 6,
-  SEL_CW = 150,
-  SEL_CH = 62,
-  SEL_GX = 10,
-  SEL_GY = 8;
-function selGridX0() {
-  return (W - (SEL_COLS * SEL_CW + (SEL_COLS - 1) * SEL_GX)) / 2;
+var SEL_PAGE_SIZE = 10;
+function setSelectHit(box, x, y, w, h) {
+  box.x = x;
+  box.y = y;
+  box.w = w;
+  box.h = h;
 }
-function selGridY0() {
-  return 102;
+function hitSelectBox(mx, my, box) {
+  return mx >= box.x && mx <= box.x + box.w && my >= box.y && my <= box.y + box.h;
+}
+function selPageStart() {
+  return Math.floor(GS.selIdx / SEL_PAGE_SIZE) * SEL_PAGE_SIZE;
 }
 function selCellAt(mx, my) {
-  var x0 = selGridX0(),
-    y0 = selGridY0();
-  for (var i = 0; i < LEVELS.length; i++) {
-    var r = Math.floor(i / SEL_COLS),
-      col = i % SEL_COLS;
-    var x = x0 + col * (SEL_CW + SEL_GX),
-      y = y0 + r * (SEL_CH + SEL_GY);
-    if (mx >= x && mx <= x + SEL_CW && my >= y && my <= y + SEL_CH) return i;
+  for (var i = 0; i < SEL_UI.nodes.length; i++) {
+    var node = SEL_UI.nodes[i];
+    if (hitSelectBox(mx, my, node)) return node.level;
   }
   return -1;
 }
+function hasAnyLevelScore() {
+  for (var i = 0; i < LEVELS.length; i++) {
+    try {
+      if ((localStorage.getItem("niu_best_lv" + i) || "0") !== "0") return true;
+    } catch (e) {}
+  }
+  return false;
+}
+function levelProgressLabel(i) {
+  var best = 0;
+  try {
+    best = parseInt(localStorage.getItem("niu_best_lv" + i) || "0", 10) || 0;
+  } catch (e) {}
+  var labels = [];
+  if (best > 0) labels.push("最佳 " + best);
+  if (isCleared(i)) labels.push("已通关");
+  if (isEggGot(i)) labels.push("金蛋");
+  return labels.length ? labels.join(" · ") : "尚未挑战";
+}
+function drawSelectMotif(c, motif, x, y, size, col) {
+  var h = size * 0.5;
+  c.save();
+  c.translate(x, y);
+  c.lineCap = "round";
+  c.lineJoin = "round";
+  c.strokeStyle = col;
+  c.fillStyle = col;
+  c.lineWidth = 4;
+  if (motif === "spike") {
+    for (var si = 0; si < 4; si++) {
+      var sx = -h + si * ((size * 0.82) / 3);
+      c.beginPath();
+      c.moveTo(sx, h * 0.55);
+      c.lineTo(sx + size * 0.13, -h * 0.6);
+      c.lineTo(sx + size * 0.26, h * 0.55);
+      c.closePath();
+      c.fill();
+    }
+    c.globalAlpha = 0.25;
+    c.fillRect(-h, h * 0.55, size, 8);
+  } else if (motif === "cannon") {
+    c.fillRect(-h * 0.88, h * 0.25, size * 0.72, h * 0.28);
+    c.beginPath();
+    c.arc(-h * 0.28, h * 0.4, h * 0.38, 0, TAU);
+    c.fill();
+    c.lineWidth = 13;
+    c.beginPath();
+    c.moveTo(-h * 0.02, h * 0.2);
+    c.lineTo(h * 0.82, -h * 0.35);
+    c.stroke();
+    c.fillStyle = "#fff5cf";
+    c.beginPath();
+    c.arc(h * 0.88, -h * 0.39, 7, 0, TAU);
+    c.fill();
+  } else if (motif === "plank") {
+    for (var pi = 0; pi < 3; pi++) {
+      var py = (pi % 2 ? -h * 0.18 : h * 0.26) + pi * -5;
+      c.fillRect(-h + pi * h * 0.74, py, h * 0.54, 10);
+      c.globalAlpha = 0.42;
+      c.fillRect(-h + pi * h * 0.74, py + 15, h * 0.54, 6);
+      c.globalAlpha = 1;
+    }
+    c.setLineDash([6, 7]);
+    c.beginPath();
+    c.moveTo(-h, h * 0.65);
+    c.lineTo(h, h * 0.65);
+    c.stroke();
+  } else if (motif === "lava") {
+    c.globalAlpha = 0.3;
+    c.fillRect(-h, -h * 0.7, size, size * 1.35);
+    c.globalAlpha = 1;
+    c.lineWidth = 6;
+    for (var li = 0; li < 3; li++) {
+      c.beginPath();
+      c.moveTo(-h, -h * 0.36 + li * 24);
+      c.quadraticCurveTo(-h * 0.45, -h * 0.72 + li * 24, 0, -h * 0.36 + li * 24);
+      c.quadraticCurveTo(h * 0.45, 0 + li * 24, h, -h * 0.36 + li * 24);
+      c.stroke();
+    }
+  } else if (motif === "tower") {
+    for (var ti = 0; ti < 4; ti++) {
+      var th = 24 + ti * 16;
+      c.globalAlpha = 0.3 + ti * 0.16;
+      c.fillRect(-h + ti * 24, h - th, 18, th);
+    }
+    c.globalAlpha = 1;
+    c.beginPath();
+    c.moveTo(-h * 0.78, h * 0.56);
+    c.lineTo(-h * 0.2, h * 0.05);
+    c.lineTo(h * 0.18, -h * 0.35);
+    c.lineTo(h * 0.78, -h * 0.75);
+    c.stroke();
+  } else if (motif === "move") {
+    c.fillRect(-h, h * 0.36, h * 0.72, 12);
+    c.fillRect(h * 0.08, -h * 0.38, h * 0.72, 12);
+    c.lineWidth = 4;
+    c.beginPath();
+    c.moveTo(-h * 0.28, h * 0.05);
+    c.lineTo(h * 0.45, h * 0.05);
+    c.moveTo(h * 0.24, -8);
+    c.lineTo(h * 0.45, h * 0.05);
+    c.lineTo(h * 0.24, 18);
+    c.stroke();
+  } else if (motif === "crumble") {
+    c.globalAlpha = 0.3;
+    c.fillRect(-h, -h * 0.55, size, h * 1.1);
+    c.globalAlpha = 1;
+    c.strokeRect(-h, -h * 0.55, size, h * 1.1);
+    c.beginPath();
+    c.moveTo(-h * 0.48, -h * 0.5);
+    c.lineTo(-h * 0.08, -4);
+    c.lineTo(-h * 0.28, h * 0.43);
+    c.moveTo(h * 0.38, -h * 0.5);
+    c.lineTo(h * 0.08, 2);
+    c.lineTo(h * 0.42, h * 0.48);
+    c.stroke();
+  } else if (motif === "dash") {
+    c.lineWidth = 12;
+    for (var di = 0; di < 3; di++) {
+      var dx = -h + di * h * 0.67;
+      c.globalAlpha = 0.35 + di * 0.25;
+      c.beginPath();
+      c.moveTo(dx, -h * 0.55);
+      c.lineTo(dx + h * 0.42, 0);
+      c.lineTo(dx, h * 0.55);
+      c.stroke();
+    }
+  } else {
+    c.globalAlpha = 0.24;
+    c.beginPath();
+    c.arc(0, 0, h * 0.84, 0, TAU);
+    c.fill();
+    c.globalAlpha = 1;
+    c.lineWidth = 5;
+    c.beginPath();
+    c.arc(0, 0, h * 0.52, 0, TAU);
+    c.stroke();
+    for (var bi = 0; bi < 4; bi++) {
+      var ba = (TAU * bi) / 4 + GT * 0.7;
+      c.fillRect(Math.cos(ba) * h * 0.84 - 5, Math.sin(ba) * h * 0.84 - 5, 10, 10);
+    }
+  }
+  c.restore();
+}
+function drawSelectArrow(c, box, left, col) {
+  rr(c, box.x, box.y, box.w, box.h, 16);
+  c.fillStyle = "rgba(9,12,25,0.78)";
+  c.fill();
+  c.strokeStyle = col;
+  c.lineWidth = 2.5;
+  c.stroke();
+  c.strokeStyle = "#fff";
+  c.lineWidth = 5;
+  c.lineCap = "round";
+  c.beginPath();
+  var cx = box.x + box.w / 2,
+    cy = box.y + box.h / 2;
+  c.moveTo(cx + (left ? 9 : -9), cy - 14);
+  c.lineTo(cx + (left ? -9 : 9), cy);
+  c.lineTo(cx + (left ? 9 : -9), cy + 14);
+  c.stroke();
+}
 function drawSelect2D(c) {
-  c.fillStyle = "rgba(5,6,15,0.45)";
+  var worldCol = ["#59c14d", "#efc06e", "#8ab4ef", "#ff7a5a", "#9aa0b8", "#c08aff", "#ffb84d", "#ff6a50"];
+  var lv = LEVELS[GS.selIdx];
+  var profile = lv.profile || {};
+  var col = worldCol[lv.theme] || "#8ab4ef";
+  var total = LEVELS.length;
+  CLR.x = -1;
+  CLR.y = -1;
+  SEL_UI.nodes = [];
+  setSelectHit(SEL_UI.prev, -1, -1, 0, 0);
+  setSelectHit(SEL_UI.next, -1, -1, 0, 0);
+  setSelectHit(SEL_UI.start, -1, -1, 0, 0);
+  setSelectHit(SEL_UI.ai, -1, -1, 0, 0);
+  c.fillStyle = "rgba(5,6,15,0.58)";
   c.fillRect(0, 0, W, H);
   c.textAlign = "center";
   c.textBaseline = "middle";
   c.fillStyle = "#ffd23f";
   c.font = "bold 34px " + FONT;
-  c.fillText("选 关 · 直接开跳", W / 2, 58);
-  c.fillStyle = "rgba(255,255,255,0.6)";
-  c.font = "13px " + FONT;
-  c.fillText("方向键/点击选择 · Enter/点击开始 · Esc 返回", W / 2, 92);
-  var x0 = selGridX0(),
-    y0 = selGridY0();
-  var worldCol = ["#59c14d", "#efc06e", "#8ab4ef", "#ff7a5a", "#9aa0b8", "#c08aff", "#ffb84d", "#ff6a50"];
-  for (var i = 0; i < LEVELS.length; i++) {
-    var r = Math.floor(i / SEL_COLS),
-      col = i % SEL_COLS;
-    var x = x0 + col * (SEL_CW + SEL_GX),
-      y = y0 + r * (SEL_CH + SEL_GY);
-    var sel = i === GS.selIdx;
-    var unl = isUnlocked(i);
-    c.fillStyle = !unl ? "rgba(24,26,36,0.75)" : sel ? "rgba(255,210,63,0.22)" : "rgba(16,16,30,0.6)";
-    c.fillRect(x, y, SEL_CW, SEL_CH);
-    c.strokeStyle = !unl ? "#4a4c56" : sel ? "#ffd23f" : worldCol[LEVELS[i].theme];
-    c.lineWidth = sel ? 3 : 1.5;
-    c.strokeRect(x, y, SEL_CW, SEL_CH);
-    c.fillStyle = !unl ? "#767a86" : sel ? "#ffd23f" : "#fff";
-    c.font = "bold 20px " + FONT;
-    c.fillText(LEVELS[i].name.split(" ")[0], x + SEL_CW / 2, y + 20);
-    c.font = "12px " + FONT;
-    c.fillStyle = !unl ? "rgba(118,122,134,0.6)" : sel ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.55)";
-    c.fillText(LEVELS[i].name.split(" ").slice(1).join(" "), x + SEL_CW / 2, y + 41);
-    if (!unl) {
-      c.fillStyle = "rgba(148,152,164,0.9)";
-      c.font = "bold 11px " + FONT;
-      c.fillText("🔒 未解锁", x + SEL_CW / 2, y + 59);
-      continue;
-    }
-    var blv = 0;
-    try {
-      blv = parseInt(localStorage.getItem("niu_best_lv" + i) || "0", 10) || 0;
-    } catch (e) {}
-    var eggTag = isEggGot(i) ? " 🥚" : "";
-    if (blv > 0) {
-      c.fillStyle = "rgba(255,210,63,0.8)";
-      c.font = "11px " + FONT;
-      c.fillText("最佳 " + blv + (isCleared(i) ? " ✓" : "") + eggTag, x + SEL_CW / 2, y + 59);
-    } else if (isCleared(i)) {
-      c.fillStyle = "rgba(138,255,90,0.9)";
-      c.font = "bold 11px " + FONT;
-      c.fillText("✓ 已通关" + eggTag, x + SEL_CW / 2, y + 59);
-    } else if (isEggGot(i)) {
-      c.fillStyle = "rgba(255,248,224,0.9)";
-      c.font = "11px " + FONT;
-      c.fillText("🥚 金蛋", x + SEL_CW / 2, y + 59);
-    }
+  c.fillText("选 关 · 挑一关开跳", W / 2, 48);
+  c.fillStyle = "rgba(255,255,255,0.7)";
+  c.font = "14px " + FONT;
+  c.fillText("先看关卡性格，再决定怎么死得漂亮。AI 会读取障碍并自动试跑。", W / 2, 78);
+
+  var cardX = 120,
+    cardY = 108,
+    cardW = 720,
+    cardH = 294;
+  var cg = c.createLinearGradient(cardX, cardY, cardX + cardW, cardY + cardH);
+  cg.addColorStop(0, "rgba(10,15,32,0.96)");
+  cg.addColorStop(0.55, "rgba(21,18,43,0.94)");
+  cg.addColorStop(1, "rgba(10,12,26,0.96)");
+  rr(c, cardX, cardY, cardW, cardH, 24);
+  c.fillStyle = cg;
+  c.fill();
+  c.strokeStyle = col;
+  c.lineWidth = 2.5;
+  c.stroke();
+  rr(c, cardX + 16, cardY + 16, 182, cardH - 32, 18);
+  c.fillStyle = "rgba(255,255,255,0.055)";
+  c.fill();
+  c.strokeStyle = "rgba(255,255,255,0.16)";
+  c.lineWidth = 1;
+  c.stroke();
+  c.globalAlpha = 0.16;
+  c.fillStyle = col;
+  c.beginPath();
+  c.arc(cardX + 107, cardY + 142, 76, 0, TAU);
+  c.fill();
+  c.globalAlpha = 1;
+  drawSelectMotif(c, profile.motif, cardX + 107, cardY + 151, 128, col);
+  c.fillStyle = "#fff";
+  c.font = "bold 48px " + FONT;
+  c.fillText(profile.icon || "!", cardX + 107, cardY + 254);
+
+  c.textAlign = "left";
+  c.fillStyle = col;
+  c.font = "bold 14px " + FONT;
+  c.fillText(
+    "WORLD " + String(GS.selIdx + 1).padStart(2, "0") + " / " + String(total).padStart(2, "0"),
+    cardX + 226,
+    cardY + 42,
+  );
+  if (profile.provider) {
+    c.textAlign = "right";
+    c.fillStyle = "rgba(205,230,255,0.88)";
+    c.font = "bold 12px " + FONT;
+    c.fillText(profile.provider, cardX + cardW - 28, cardY + 42);
+    c.textAlign = "left";
   }
-  c.fillStyle = "rgba(255,255,255,0.5)";
+  c.fillStyle = "#fff";
+  c.font = "bold 31px " + FONT;
+  c.fillText(lv.name, cardX + 226, cardY + 83);
+  c.fillStyle = "#ffd23f";
+  c.font = "bold 23px " + FONT;
+  c.fillText(profile.title || "未知试炼", cardX + 226, cardY + 122);
+  c.fillStyle = "rgba(230,238,255,0.86)";
+  c.font = "16px " + FONT;
+  c.fillText(profile.challenge || "观察路线", cardX + 226, cardY + 154);
+  c.fillStyle = "rgba(255,255,255,0.57)";
+  c.font = "13px " + FONT;
+  c.fillText(profile.background || "独特远景正在生成。", cardX + 226, cardY + 183);
+  var aliases = profile.aliases || [];
+  var alias = aliases.length ? aliases[Math.floor(GT / 2.4) % aliases.length] : profile.tip || "先观察，再起跳。";
+  c.fillText("梗名 · " + alias, cardX + 226, cardY + 205);
+  c.fillStyle = col;
+  c.font = "bold 14px " + FONT;
+  c.fillText("难度  " + "★".repeat(profile.difficulty || 1), cardX + 226, cardY + 235);
+  c.fillStyle = isCleared(GS.selIdx) ? "#8aff5a" : isEggGot(GS.selIdx) ? "#fff1a8" : "rgba(255,255,255,0.55)";
+  c.font = "14px " + FONT;
+  c.fillText(levelProgressLabel(GS.selIdx), cardX + 226, cardY + 262);
+
+  var aiX = cardX + 226,
+    aiY = cardY + 216,
+    aiW = 166,
+    aiH = 58;
+  var startX = cardX + 414,
+    startY = cardY + 216,
+    startW = 276,
+    startH = 58;
+  setSelectHit(SEL_UI.ai, aiX, aiY, aiW, aiH);
+  rr(c, aiX, aiY, aiW, aiH, 16);
+  c.fillStyle = AI.enabled ? "rgba(76,180,232,0.94)" : "rgba(15,31,54,0.95)";
+  c.fill();
+  c.strokeStyle = AI.enabled ? "#c7f3ff" : "rgba(156,211,255,0.76)";
+  c.lineWidth = 1.5;
+  c.stroke();
+  c.textAlign = "center";
+  c.fillStyle = AI.enabled ? "#081925" : "#cceeff";
+  c.font = "bold 16px " + FONT;
+  c.fillText(AI.enabled ? "AI 已接管" : "AI 路线演示", aiX + aiW / 2, aiY + 24);
+  c.font = "11px " + FONT;
+  c.fillText(AI.enabled ? "安全演示 · 点此切回手动" : "点此启动智能通关", aiX + aiW / 2, aiY + 43);
+  setSelectHit(SEL_UI.start, startX, startY, startW, startH);
+  rr(c, startX, startY, startW, startH, 16);
+  c.fillStyle = isUnlocked(GS.selIdx) ? "#ffd23f" : "#4a4c56";
+  c.fill();
+  c.strokeStyle = "rgba(255,255,255,0.75)";
+  c.lineWidth = 1.5;
+  c.stroke();
+  c.textAlign = "center";
+  c.fillStyle = "#281600";
+  c.font = "bold 22px " + FONT;
+  c.fillText(
+    isUnlocked(GS.selIdx) ? (AI.enabled ? "AI 自动挑战  ▶" : "开始挑战  ▶") : "尚未解锁",
+    startX + startW / 2,
+    startY + startH / 2 + 1,
+  );
+
+  var pageStart = selPageStart();
+  var count = Math.min(SEL_PAGE_SIZE, total - pageStart);
+  var nodeGap = 8;
+  var nodeW = Math.min(76, (700 - nodeGap * (count - 1)) / Math.max(1, count));
+  var nodeH = 60;
+  var nodeTotal = nodeW * count + nodeGap * (count - 1);
+  var nodeX0 = (W - nodeTotal) / 2;
+  var nodeY = 432;
+  setSelectHit(SEL_UI.prev, 42, nodeY, 64, nodeH);
+  setSelectHit(SEL_UI.next, W - 106, nodeY, 64, nodeH);
+  drawSelectArrow(c, SEL_UI.prev, true, col);
+  drawSelectArrow(c, SEL_UI.next, false, col);
+  for (var ni = 0; ni < count; ni++) {
+    var idx = pageStart + ni;
+    var nx = nodeX0 + ni * (nodeW + nodeGap);
+    var selected = idx === GS.selIdx;
+    var node = { x: nx, y: nodeY, w: nodeW, h: nodeH, level: idx };
+    SEL_UI.nodes.push(node);
+    rr(c, nx, nodeY, nodeW, nodeH, 12);
+    c.fillStyle = selected ? "rgba(255,210,63,0.26)" : "rgba(8,12,26,0.74)";
+    c.fill();
+    c.strokeStyle = selected ? "#ffd23f" : worldCol[LEVELS[idx].theme] || "#8ab4ef";
+    c.lineWidth = selected ? 2.8 : 1.25;
+    c.stroke();
+    c.fillStyle = selected ? "#ffd23f" : "#fff";
+    c.font = "bold 18px " + FONT;
+    c.textAlign = "center";
+    c.fillText(String(idx + 1), nx + nodeW / 2, nodeY + 24);
+    c.fillStyle = isCleared(idx) ? "#8aff5a" : isEggGot(idx) ? "#fff1a8" : "rgba(255,255,255,0.45)";
+    c.font = "bold 11px " + FONT;
+    c.fillText(isCleared(idx) ? "✓" : isEggGot(idx) ? "蛋" : LEVELS[idx].profile.icon, nx + nodeW / 2, nodeY + 45);
+  }
+  c.fillStyle = "rgba(255,255,255,0.6)";
   c.font = "12px " + FONT;
-  c.fillText("每关终点都有 GPT 老板守关 · 终章 Anthropic 机房决战 · 跳刺重制 " + VER, W / 2, H - 24);
-  /* 清空最佳/最高分 按钮 */
-  if (
-    GS.hs > 0 ||
-    (function () {
-      var any = false;
-      for (var bi = 0; bi < LEVELS.length; bi++) {
-        try {
-          if ((localStorage.getItem("niu_best_lv" + bi) || "0") !== "0") {
-            any = true;
-            break;
-          }
-        } catch (e) {}
-      }
-      return any;
-    })()
-  ) {
-    CLR.x = 12;
-    CLR.y = 14;
-    CLR.w = 120;
+  c.fillText(
+    total > SEL_PAGE_SIZE
+      ? "第 " + (pageStart + 1) + "–" + (pageStart + count) + " 关 · 点编号选关"
+      : "点编号选关 · 点挑战按钮开跳",
+    W / 2,
+    414,
+  );
+  c.fillStyle = "rgba(255,255,255,0.52)";
+  c.font = "12px " + FONT;
+  c.fillText("← → 切关 · ↑ ↓ 快速跳转 · I 切换 AI · Enter 开始 · Esc 返回", W / 2, H - 22);
+
+  if (GS.hs > 0 || hasAnyLevelScore()) {
+    CLR.x = W - 148;
+    CLR.y = 18;
+    CLR.w = 128;
     CLR.h = 34;
-    c.fillStyle = "rgba(20,16,34,0.85)";
-    c.fillRect(CLR.x, CLR.y, CLR.w, CLR.h);
+    rr(c, CLR.x, CLR.y, CLR.w, CLR.h, 10);
+    c.fillStyle = "rgba(20,16,34,0.88)";
+    c.fill();
     c.strokeStyle = "#ff6a6a";
     c.lineWidth = 1.5;
-    c.strokeRect(CLR.x, CLR.y, CLR.w, CLR.h);
-    c.fillStyle = "#ff8a8a";
+    c.stroke();
+    c.fillStyle = "#ff9a9a";
     c.font = "bold 13px " + FONT;
-    c.textAlign = "center";
-    c.textBaseline = "middle";
-    c.fillText("🧹 清空成绩", CLR.x + CLR.w / 2, CLR.y + CLR.h / 2 + 1);
+    c.fillText("清空成绩", CLR.x + CLR.w / 2, CLR.y + CLR.h / 2 + 1);
   }
 }
 function drawOver2D(c) {
@@ -5608,7 +6672,7 @@ function drawWin2D(c) {
   c.fillText("积分榜:金币 " + GS.sCoin + " + 击杀 " + GS.sKill + " + 奖励 " + GS.sBonus, W / 2, H / 2 + 6);
   c.fillStyle = "rgba(160,220,255,0.9)";
   c.font = "16px " + FONT;
-  c.fillText("Anthropic 机房服务器集群冒烟,牛来从过热警报中凯旋。谢谢玩!", W / 2, H / 2 + 16);
+  c.fillText("克劳德机房服务器集群冒烟,牛来从过热警报中凯旋。谢谢玩!", W / 2, H / 2 + 16);
   c.fillStyle = eggFullBadge() ? "#ffd23f" : "rgba(255,255,255,0.7)";
   c.font = "14px " + FONT;
   c.fillText("金蛋 x" + eggCount() + "/" + LEVELS.length + (eggFullBadge() ? " · 🥚 大满贯!" : ""), W / 2, H / 2 + 38);
@@ -5681,17 +6745,33 @@ cv.addEventListener("pointerdown", function (e) {
       popText(W / 2 + 90, H / 2 - 30, "已清空·重新开始", "#8aff5a");
       return;
     }
+    if (hitSelectBox(mx, my, SEL_UI.prev)) {
+      selectLevel(GS.selIdx - 1);
+      return;
+    }
+    if (hitSelectBox(mx, my, SEL_UI.next)) {
+      selectLevel(GS.selIdx + 1);
+      return;
+    }
     var cell = selCellAt(mx, my);
     if (cell >= 0) {
-      GS.selIdx = cell;
-      if (isUnlocked(cell)) {
-        startLevel(cell);
-      } else {
+      selectLevel(cell);
+      return;
+    }
+    if (hitSelectBox(mx, my, SEL_UI.ai)) {
+      setAIMode(!AI.enabled);
+      return;
+    }
+    if (hitSelectBox(mx, my, SEL_UI.start)) {
+      if (isUnlocked(GS.selIdx)) startLevel(GS.selIdx);
+      else {
         sWarn();
         addShake(3);
         popText(W / 2, H / 2, "先通过上一关解锁!", "#ff8a8a");
       }
     }
+  } else if ((GS.state === "play" || GS.state === "bossintro") && hitSelectBox(mx, my, AI_UI)) {
+    setAIMode(!AI.enabled);
   } else if (GS.state === "gameover" || GS.state === "win") {
     GS.state = "title";
     makeSky();

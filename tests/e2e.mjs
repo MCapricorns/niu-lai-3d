@@ -306,7 +306,21 @@ try {
   }
   await sleep(500);
   const result = await evaluate(`(function(){
-    var out={initial:{state:GS.state,three:THREE_OK,error:_errMsg,calf:!!mCalf,version:VER},levels:[],bugs:{}};
+    var out={
+      initial:{state:GS.state,three:THREE_OK,error:_errMsg,calf:!!mCalf,version:VER},
+      levels:[],
+      bugs:{},
+      profiles:LEVELS.map(function(lv){
+        return {
+          title:lv.profile&&lv.profile.title,
+          motif:lv.profile&&lv.profile.motif,
+          difficulty:lv.profile&&lv.profile.difficulty,
+          provider:lv.profile&&lv.profile.provider,
+          aliases:lv.profile&&lv.profile.aliases,
+          backdrop:lv.profile&&lv.profile.backdrop
+        };
+      })
+    };
     for(var i=0;i<LEVELS.length;i++){
       _errMsg="";
       try{ loadLevel(i,true); GS.state="pause"; render(); out.levels.push({i:i,name:curLV.name,theme:curLV.theme,error:_errMsg,calf:!!mCalf,children:dynGroup.children.length}); }
@@ -352,59 +366,8 @@ try {
     out.bugs.comboRewards={time:GS.time,score:GS.score,bonus:GS.sBonus,lives:GS.lives,star:PL.star};
     loadLevel(3,true); out.bugs.level42Lava=Array.from(tiles).filter(function(c){return c===11;}).length;
     out.bugs.level44Flag=LEVELS[3].flagX;
-    /* —— 自动模式已移除:改为“无作弊烟雾验证”——测试内置反射机器人(不属于游戏本体) —— */
-    out.routes = [];
-    var routeKeyState = {};
-    function routeKey(code, down) {
-      var gameDown =
-        code === "ArrowRight" ? keys.right : code === "ArrowLeft" ? keys.left : code === "ShiftLeft" ? keys.run : keys.jump;
-      if (routeKeyState[code] === down && (!down || gameDown)) return;
-      routeKeyState[code] = down;
-      window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { code: code, bubbles: true, cancelable: true }));
-    }
-    /* 反射机器人:向右跑;前方有墙/坑/敌人就起跳。只用来冒烟验证关卡可玩性。 */
-    var botJumpFrames = 0;
-    function botControl() {
-      var px = PL.x + PL.w / 2,
-        feetRow = Math.floor((PL.y + PL.h + 2) / T),
-        cc = Math.floor(px / T);
-      var wall = false,
-        gap = false,
-        foe = false,
-        hold = 0.18;
-      for (var d = 1; d <= 3 && !wall; d++) {
-        if (solid(tileAt(cc + d, feetRow - 1)) || solid(tileAt(cc + d, feetRow - 2))) {
-          wall = true;
-          hold = Math.max(hold, 0.16 + d * 0.06);
-        }
-      }
-      var airRun = 0;
-      for (var d2 = 1; d2 <= 9; d2++) {
-        var has = false;
-        for (var ty = feetRow - 1; ty <= feetRow + 3; ty++) {
-          var c = tileAt(cc + d2, ty);
-          if (solid(c) || c === 9 || c === 12 || c === 16) {
-            has = true;
-            break;
-          }
-        }
-        if (!has) airRun++;
-        else {
-          if (airRun > 0 && airRun <= 7) {
-            gap = true;
-            hold = Math.max(hold, Math.min(0.6, 0.16 + airRun * 0.07));
-          }
-          break;
-        }
-      }
-      for (var e2 = 0; e2 < ents.length; e2++) {
-        var en = ents[e2];
-        if (en.dead || en.gone || en.k === "move") continue;
-        var edx = en.x + en.w / 2 - px;
-        if (edx > 10 && edx < 95 && Math.abs(en.y + en.h - (PL.y + PL.h)) < 70) foe = true;
-      }
-      return { right: true, jump: wall || gap || foe, hold: hold };
-    }
+    /* AI 路线演示走游戏本体的障碍读取和按键控制；安全线路仅在演示时容错。 */
+    out.aiRoutes = [];
     function botSeed(n) {
       var s = n >>> 0;
       Math.random = function () {
@@ -414,50 +377,42 @@ try {
         return t / 4294967296;
       };
     }
-    for (var smokeLevel = 0; smokeLevel < LEVELS.length; smokeLevel++) {
-      botSeed(0x170000 + smokeLevel);
-      startLevel(smokeLevel);
-      GS.lives = 99;
+    for (var aiLevel = 0; aiLevel < LEVELS.length; aiLevel++) {
+      botSeed(0x220000 + aiLevel);
+      setAIMode(true);
+      startLevel(aiLevel);
+      GS.time = 300;
+      GS.lives = AI.lives;
       var maxX = PL.x,
         deaths = 0,
         prevState = GS.state,
         frames = 0,
         passed = false,
-        bossSeen = false;
-      routeKeyState = {};
-      for (frames = 0; frames < 60 * 15; frames++) {
-        if (GS.state === "play") {
-          var bcmd = botControl();
-          if (bcmd.jump && PL.ground && botJumpFrames <= 0) botJumpFrames = Math.round(bcmd.hold * 60);
-          routeKey("ArrowRight", true);
-          routeKey("ShiftLeft", true);
-          if (botJumpFrames > 0) {
-            routeKey("Space", true);
-            botJumpFrames--;
-          } else routeKey("Space", false);
-        } else if (botJumpFrames > 0) botJumpFrames--;
+        goalState = aiLevel === FINAL_LV ? "winseq" : "clear";
+      for (frames = 0; frames < 60 * 150; frames++) {
         update(1 / 60);
         if (PL.x > maxX) maxX = PL.x;
         if (GS.state === "dead" && prevState !== "dead") deaths++;
         prevState = GS.state;
-        if (smokeLevel < LEVELS.length - 1 && GS.state === "clear") {
+        if (GS.state === goalState) {
           passed = true;
           break;
         }
+        if (GS.state === "gameover") break;
       }
-      routeKey("ArrowRight", false);
-      routeKey("ShiftLeft", false);
-      routeKey("Space", false);
-      out.routes.push({
-        level: smokeLevel,
+      out.aiRoutes.push({
+        level: aiLevel,
         name: curLV.name,
         passed: passed,
         state: GS.state,
         currentTile: Math.round((PL.x / T) * 10) / 10,
         maxTile: Math.round((maxX / T) * 10) / 10,
         deaths: deaths,
+        retries: AI.retries,
+        status: AI.status,
         error: _errMsg,
       });
+      setAIMode(false);
     }
     /* 终站 Boss 可达性:传送到触发点前一格,验证 Dario 登场 */
     startLevel(LEVELS.length - 1);
@@ -567,6 +522,105 @@ try {
     collideY(PL);out.fun.poundLand={ground:PL.ground,pound:!!PL.pounding};
     return out;
   })()`);
+  /*
+   * The game itself is landscape, but portrait phones need a usable selector
+   * and separated touch zones. Exercise both canvas hit regions and the CSS
+   * layout in Chromium's touch viewport.
+   */
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await send("Emulation.setTouchEmulationEnabled", { enabled: true, configuration: "mobile" });
+  await sleep(100);
+  const portraitUi = await evaluate(`(function(){
+    var td=document.getElementById("touch");
+    touchUI=td;
+    td.classList.add("touch-enabled");
+    touchControlsVisible=false;
+    GS.selIdx=0;
+    GS.state="select";
+    syncTouchControls();
+    render();
+    var railCount=SEL_UI.nodes.length;
+    var startBounds={x:SEL_UI.start.x,y:SEL_UI.start.y,w:SEL_UI.start.w,h:SEL_UI.start.h};
+    function tap(box){
+      var rect=cv.getBoundingClientRect();
+      cv.dispatchEvent(new PointerEvent("pointerdown",{
+        clientX:rect.left+(box.x+box.w/2)*rect.width/W,
+        clientY:rect.top+(box.y+box.h/2)*rect.height/H,
+        pointerType:"touch",
+        bubbles:true
+      }));
+    }
+    tap(SEL_UI.next);
+    var arrowWorked=GS.selIdx===1;
+    render();
+    var target=SEL_UI.nodes[Math.min(4,SEL_UI.nodes.length-1)];
+    tap(target);
+    var nodeWorked=GS.selIdx===target.level;
+    render();
+    tap(SEL_UI.ai);
+    var aiCardWorked=AI.enabled;
+    render();
+    tap(SEL_UI.ai);
+    var aiCardReset=!AI.enabled;
+    render();
+    var chosen=GS.selIdx;
+    tap(SEL_UI.start);
+    var startWorked=GS.state==="play"&&GS.li===chosen;
+    render();
+    tap(AI_UI);
+    var aiHudWorked=AI.enabled;
+    render();
+    tap(AI_UI);
+    var aiHudReset=!AI.enabled;
+    GS.state="select";
+    syncTouchControls();
+    var hiddenOnSelect=!td.classList.contains("is-active");
+    GS.state="play";
+    syncTouchControls();
+    var shownInPlay=td.classList.contains("is-active");
+    var ids=["btnL","btnR","btnB","btnJ","btnP"];
+    var boxes=ids.map(function(id){
+      var b=document.getElementById(id).getBoundingClientRect();
+      return {id:id,left:b.left,top:b.top,right:b.right,bottom:b.bottom,width:b.width,height:b.height};
+    });
+    var overlaps=[];
+    for(var i=0;i<boxes.length;i++) for(var j=i+1;j<boxes.length;j++){
+      var a=boxes[i],b=boxes[j];
+      if(a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top) overlaps.push(a.id+"+"+b.id);
+    }
+    var canvasRect=cv.getBoundingClientRect();
+    GS.state="select";
+    syncTouchControls();
+    return {
+      viewport:{w:window.innerWidth,h:window.innerHeight,coarse:matchMedia("(pointer: coarse)").matches},
+      selector:{
+        railCount:railCount,
+        startBounds:startBounds,
+        arrowWorked:arrowWorked,
+        nodeWorked:nodeWorked,
+        startWorked:startWorked,
+        aiCardWorked:aiCardWorked,
+        aiCardReset:aiCardReset,
+        aiHudWorked:aiHudWorked,
+        aiHudReset:aiHudReset
+      },
+      controls:{
+        enabled:td.classList.contains("touch-enabled"),
+        hiddenOnSelect:hiddenOnSelect,
+        shownInPlay:shownInPlay,
+        overlaps:overlaps,
+        boxes:boxes
+      },
+      canvas:{top:canvasRect.top,width:canvasRect.width,height:canvasRect.height}
+    };
+  })()`);
+  await send("Emulation.clearDeviceMetricsOverride");
+  await send("Emulation.setTouchEmulationEnabled", { enabled: false });
   const failures = [];
   const check = (condition, message) => {
     if (!condition) failures.push(message);
@@ -574,6 +628,22 @@ try {
   const near = (actual, expected, tolerance = 0.01) => Math.abs(actual - expected) <= tolerance;
   check(result.initial.three && result.initial.calf && !result.initial.error, "game failed to initialize");
   check(result.levels.length === 9, `expected 9 levels, got ${result.levels.length}`);
+  check(
+    result.profiles.length === 9 &&
+      result.profiles.every(
+        (profile) =>
+          profile.title &&
+          profile.motif &&
+          profile.difficulty &&
+          profile.provider &&
+          Array.isArray(profile.aliases) &&
+          profile.aliases.length >= 3 &&
+          profile.backdrop,
+      ) &&
+      new Set(result.profiles.map((profile) => profile.motif)).size === result.profiles.length &&
+      new Set(result.profiles.map((profile) => profile.backdrop)).size === result.profiles.length,
+    "each level should expose a distinct themed identity",
+  );
   for (const level of result.levels) check(!level.error && !level.thrown, `level ${level.i + 1} failed to render`);
   check(result.bugs.bigCoinPreserved, "large coin metadata was lost");
   check(near(result.bugs.bump.delta, 0), "used item box moved away from its tile");
@@ -645,21 +715,52 @@ try {
     "wall jump output regressed",
   );
   check(result.fun?.eggMarked && result.fun.eggCountAfter >= 1, "golden egg collection did not persist");
-  /* 冒烟:每关无异常、机器人有前进 */
-  for (const route of result.routes) {
-    check(!route.error, `smoke error in ${route.name}: ${route.error}`);
-    check(route.maxTile > 5, `bot made no progress in ${route.name} (max ${route.maxTile})`);
+  /* AI 路线模式必须经由正常输入与碰撞流程跑进每关结算状态。 */
+  for (const route of result.aiRoutes) {
+    check(!route.error, `AI route error in ${route.name}: ${route.error}`);
+    check(
+      route.passed,
+      `AI did not clear ${route.name} (state=${route.state}, max=${route.maxTile}, status=${route.status})`,
+    );
   }
-  const failedSmoke = result.routes.filter((r) => !r.passed);
-  if (failedSmoke.length)
+  check(portraitUi.viewport.h > portraitUi.viewport.w, "portrait viewport was not applied");
+  check(portraitUi.selector.railCount === 9, "portrait selector did not expose every current level");
+  check(
+    portraitUi.selector.startBounds.w >= 250 && portraitUi.selector.startBounds.h >= 50,
+    "portrait selector start target is too small",
+  );
+  check(portraitUi.selector.arrowWorked, "selector next arrow did not change levels");
+  check(portraitUi.selector.nodeWorked, "selector level rail did not select a level");
+  check(portraitUi.selector.startWorked, "selector start button did not launch the chosen level");
+  check(
+    portraitUi.selector.aiCardWorked && portraitUi.selector.aiCardReset,
+    "selector AI toggle did not switch cleanly",
+  );
+  check(portraitUi.selector.aiHudWorked && portraitUi.selector.aiHudReset, "in-game AI toggle did not switch cleanly");
+  check(portraitUi.controls.enabled, "touch controls were not initialized for portrait UI");
+  check(portraitUi.controls.hiddenOnSelect, "touch controls were visible over the selector");
+  check(portraitUi.controls.shownInPlay, "touch controls did not appear during play");
+  check(
+    portraitUi.controls.boxes.every((box) => box.width >= 50 && box.height >= 50),
+    "portrait touch target became too small",
+  );
+  check(
+    portraitUi.controls.overlaps.length === 0,
+    `portrait touch controls overlap: ${portraitUi.controls.overlaps.join(", ")}`,
+  );
+  const failedAIRoutes = result.aiRoutes.filter((r) => !r.passed);
+  if (failedAIRoutes.length)
     console.log(
-      "SMOKE (info):",
-      JSON.stringify(failedSmoke.map((r) => ({ n: r.name, cur: r.currentTile, max: r.maxTile, d: r.deaths }))),
+      "AI ROUTES (info):",
+      JSON.stringify(
+        failedAIRoutes.map((r) => ({ n: r.name, cur: r.currentTile, max: r.maxTile, d: r.deaths, s: r.status })),
+      ),
     );
   console.log(
-    `Edge E2E: levels ${result.levels.length}/${result.levels.length}, bot-clearable ${result.routes.filter((route) => route.passed).length}/${result.routes.length}, boss ${result.bugs.bossTriggered ? "OK" : "MISSING"}`,
+    `Edge E2E: levels ${result.levels.length}/${result.levels.length}, AI-clearable ${result.aiRoutes.filter((route) => route.passed).length}/${result.aiRoutes.length}, boss ${result.bugs.bossTriggered ? "OK" : "MISSING"}`,
   );
   console.log("VIEW:", JSON.stringify(result.bugs.view), "BOSSTRACE:", JSON.stringify(result.bugs.bossTrace));
+  console.log("PORTRAIT:", JSON.stringify(portraitUi));
   if (failures.length) throw new Error(`E2E failures:\n- ${failures.join("\n- ")}`);
 } catch (error) {
   testFailure = error;
