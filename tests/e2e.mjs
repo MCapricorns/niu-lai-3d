@@ -418,7 +418,7 @@ try {
         frames = 0,
         passed = false,
         goalState = aiLevel === FINAL_LV ? "winseq" : "clear";
-      for (frames = 0; frames < 60 * 180; frames++) {
+      for (frames = 0; frames < 60 * 240; frames++) {
         update(1 / 60);
         if (PL.x > maxX) maxX = PL.x;
         if (prevVy > -80 && PL.vy < -480) jumps++;

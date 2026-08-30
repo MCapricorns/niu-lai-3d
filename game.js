@@ -855,6 +855,18 @@ function aiColumn(tx) {
         continue;
       }
     }
+    if (solid(c) && ty <= 10) {
+      var gapUnder = false;
+      for (var gy = ty + 1; gy <= ty + 2 && gy < curLV.h; gy++) {
+        var gc = tileAt(tx, gy);
+        if (gc === 0) {
+          gapUnder = true;
+          break;
+        }
+        if (aiHazardTile(gc) || gc === 9 || gc === 16 || gc === 12) break;
+      }
+      if (gapUnder) continue;
+    }
     if (aiHazardTile(c) || aiFloorTile(c)) {
       surface = { tx: tx, row: ty, tile: c, hazard: aiHazardTile(c) };
       break;
@@ -959,7 +971,7 @@ function aiReadTerrain() {
       target = s;
       break;
     }
-    if (!firstRisk && s && !s.hazard && s.row < current.row) {
+    if (!firstRisk && s && !s.hazard && s.row < current.row && s.row >= current.row - 3) {
       firstRisk = { distance: d, surface: s, kind: "高台" };
       target = aiLandingOK(s) ? s : null;
       break;
@@ -1126,12 +1138,13 @@ function aiControlMovingBridge(terrain, px) {
   }
   var center = bridge.x + bridge.w / 2;
   var edge = (terrain.col + Math.max(1, terrain.distance)) * T;
-  if (px < edge - 16) {
+  if (px < edge - 22) {
     keys.right = true;
     AI.status = "靠近沟沿";
     return true;
   }
   keys.right = false;
+  keys.left = PL.vx > 30;
   var soon = (Math.sin((bridge.t + 0.25) * 1.4) + 1) / 2;
   var soonX = lerp(bridge.x1, bridge.x2, soon) + bridge.w / 2;
   var approaching = Math.abs(soonX - px) < Math.abs(center - px) - 4;
@@ -1204,9 +1217,14 @@ function updateAIMode(dt) {
     aiControlFinalBoss(px);
     return;
   }
-  if (!PL.ground && (PL.hitL || PL.hitR) && aiStartWallJump()) {
-    AI.status = "蹬墙";
-    return;
+  if (!PL.ground && (PL.hitL || PL.hitR)) {
+    var wallTx = PL.hitR ? Math.floor((PL.x + PL.w + 2) / T) : Math.floor((PL.x - 2) / T);
+    var climb = 0;
+    for (var wy = 0; wy < 13; wy++) if (solid(tileAt(wallTx, wy))) climb++;
+    if (climb >= 3 && aiStartWallJump()) {
+      AI.status = "蹬墙";
+      return;
+    }
   }
   var terrain = aiReadTerrain();
   var mini = aiLiveMiniBoss();
@@ -1319,6 +1337,7 @@ function updateAIMode(dt) {
   var lastSafe = terrain.distance <= trigger;
   if (terrain.narrow && mustJump) lastSafe = true;
   if (mustJump && lastSafe && !terrain.ceiling) {
+    if (terrain.target && aiIsNarrow(terrain.target) && span <= 4) keys.run = false;
     aiStartJump(aiJumpHoldFor(terrain), terrain.target);
     AI.status = "跳过" + terrain.kind;
     return;
