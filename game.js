@@ -1149,8 +1149,8 @@ function aiControlMovingBridge(terrain, px) {
   }
   keys.right = false;
   keys.left = PL.vx > 50;
-  if ((PL.ground || PL.coyote > 0) && Math.abs(center - px) < 3.2 * T) {
-    aiStartJump(0.4, { tx: Math.floor(center / T), row: Math.floor(bridge.y / T), tile: 9, hazard: false });
+  if ((PL.ground || PL.coyote > 0) && Math.abs(center - px) < 2.3 * T) {
+    aiStartJump(0.38, { tx: Math.floor(center / T), row: Math.floor(bridge.y / T), tile: 9, hazard: false });
     AI.status = "跳上移动平台";
     return true;
   }
