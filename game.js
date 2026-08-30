@@ -1114,6 +1114,14 @@ function updateAIMode(dt) {
   var terrain = aiReadTerrain();
   var foe = aiNearbyThreat(px);
   keys.right = true;
+  /*
+   * 安全演示把会反复读档的试错地形化为可走的路线，因此刺海、熔岩和
+   * 碎桥可以被完整展示；高台仍必须按真实跳跃/蹬墙逻辑通过。
+   */
+  if (aiSafetyActive() && terrain.kind !== "高台") {
+    AI.status = terrain.kind === "平路" ? "扫描前方地形" : "安全线路越过" + terrain.kind;
+    return;
+  }
   if (
     (terrain.kind === "断层" || terrain.kind === "尖刺" || terrain.kind === "岩浆") &&
     (!terrain.target || terrain.target.tx - terrain.col > 9)
@@ -3139,7 +3147,10 @@ function updateShots(dt) {
     s.y += (s.vy || 0) * dt;
     if (s.mesh) s.mesh.position.set(worldX(s.x), worldY(s.y), 1.4);
     var gone =
-      solid(tileAt(Math.floor(s.x / T), Math.floor(s.y / T))) || s.t > 1.4 || s.x < camX - 120 || s.x > camX + W + 120;
+      (!aiSafetyActive() && solid(tileAt(Math.floor(s.x / T), Math.floor(s.y / T)))) ||
+      s.t > 1.4 ||
+      s.x < camX - 120 ||
+      s.x > camX + W + 120;
     if (!gone) {
       for (var e = 0; e < ents.length; e++) {
         var en = ents[e];
