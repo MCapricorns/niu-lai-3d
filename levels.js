@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * v2.1.0 关卡个性重制 · 全关像素级布局
+ * v2.2.0 模型梗世界观 + AI 路线演示 · 全关像素级布局
  *
  * 设计哲学(致敬 IWBTG 系列"试错—掌握"循环):
  * - 每段障碍只有一个意图:刺坑=跳不过就死,顶刺=禁跳低走,窄板=一个像素的落点,
@@ -48,6 +48,10 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
       tip: "先看清楚，再起跳。",
       motif: "spike",
       difficulty: 1,
+      provider: "",
+      aliases: [],
+      background: "",
+      backdrop: "grok",
     };
   }
   LV.prototype.set = function (x, y, c) {
@@ -188,7 +192,8 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     this.fill(x1, x2, floorY === undefined ? 13 : floorY, floorY === undefined ? 13 : floorY, T.GROUND);
     this.fill(x1, x2, 11, 11, T.BRICK);
   };
-  LV.prototype.setProfile = function (icon, title, challenge, tip, motif, difficulty) {
+  LV.prototype.setProfile = function (icon, title, challenge, tip, motif, difficulty, flavor) {
+    flavor = flavor || {};
     this.profile = {
       icon: icon,
       title: title,
@@ -196,6 +201,10 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
       tip: tip,
       motif: motif,
       difficulty: difficulty || 1,
+      provider: flavor.provider || "",
+      aliases: flavor.aliases || [],
+      background: flavor.background || "",
+      backdrop: flavor.backdrop || motif,
     };
   };
 
@@ -207,11 +216,16 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     LEVELS.push(lv);
   }
 
-  /* ================= 世界1 · 格莱美草原:把"刺=死"烙进肌肉 ================= */
+  /* ================= 世界1 · 格罗克草原:把"刺=死"烙进肌肉 ================= */
 
-  defLevel(112, "1-1 格莱美草原", 0, function (g) {
+  defLevel(112, "1-1 格罗克草原", 0, function (g) {
     g.startX = 3;
-    g.setProfile("▲", "刺缝入门", "短跳 · 窄板 · 假桥", "低跳比莽撞更可靠。", "spike", 1);
+    g.setProfile("▲", "刺缝入门", "短跳 · 窄板 · 假桥", "低跳比莽撞更可靠。", "spike", 1, {
+      provider: "xAI · Grok",
+      aliases: ["X 观刺台", "懂刺草场", "格罗克草原"],
+      background: "X 流星与实时吃瓜卫星",
+      backdrop: "grok",
+    });
     g.groundAll();
     g.coinRow(8, 10, 3);
     /* A 刺缝:2 格贴地刺,第一课——跳过去 */
@@ -259,9 +273,14 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
 
   /* ================= 世界2 · 戈壁沙海:炮火准时送达 ================= */
 
-  defLevel(118, "2-1 逗包戈壁", 1, function (g) {
+  defLevel(118, "2-1 豆包戈壁", 1, function (g) {
     g.startX = 3;
-    g.setProfile("◉", "炮火节拍", "读炮口 · 穿火线 · 借掩体", "听到炮声别慌，等出膛再走。", "cannon", 2);
+    g.setProfile("◉", "炮火节拍", "读炮口 · 穿火线 · 借掩体", "听到炮声别慌，等出膛再走。", "cannon", 2, {
+      provider: "字节跳动 · 豆包",
+      aliases: ["字节风沙线", "弹幕沙丘", "豆包戈壁"],
+      background: "豆形云和字节沙暴",
+      backdrop: "doubao",
+    });
     g.groundAll();
     g.coinRow(7, 10, 4);
     /*
@@ -293,11 +312,16 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     g.flag(114);
   });
 
-  /* ================= 世界3 · 冰谷雪峰:冰湖上的像素即正义 ================= */
+  /* ================= 世界3 · 千问冰湖:冰湖上的像素即正义 ================= */
 
-  defLevel(124, "3-1 月之阳面", 2, function (g) {
+  defLevel(124, "3-1 千问冰湖", 2, function (g) {
     g.startX = 3;
-    g.setProfile("═", "冰湖棋盘", "单格落点 · 连跳节奏", "每块板都是下一跳的起点。", "plank", 3);
+    g.setProfile("═", "冰湖棋盘", "单格落点 · 连跳节奏", "每块板都是下一跳的起点。", "plank", 3, {
+      provider: "阿里云 · 通义千问",
+      aliases: ["一千零一跳", "Qwen 月背", "千问冰湖"],
+      background: "千问月相与镜面冰环",
+      backdrop: "qwen",
+    });
     g.groundAll();
     g.coinRow(8, 10, 3);
     /* A 冰湖窄板:59 格刺湖,18 块 40px 宽浮板,间距 3 格、高低交替 1 格。
@@ -344,11 +368,16 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     g.flag(119);
   });
 
-  /* ================= 世界4 · 火山:熔岩不怜悯任何人 ================= */
+  /* ================= 世界4 · 恰特鸡屁踢火山:熔岩不怜悯任何人 ================= */
 
-  defLevel(112, "4-1 柴特鸡屁踢", 3, function (g) {
+  defLevel(112, "4-1 恰特鸡屁踢火山", 3, function (g) {
     g.startX = 3;
-    g.setProfile("♨", "熔岩竖井", "跳岛 · 蹬墙 · 高低路线", "看见岩浆，先找下一座岛。", "lava", 3);
+    g.setProfile("♨", "熔岩竖井", "跳岛 · 蹬墙 · 高低路线", "看见岩浆，先找下一座岛。", "lava", 3, {
+      provider: "OpenAI · ChatGPT",
+      aliases: ["提示词岩浆", "聊天熔炉", "恰特鸡屁踢"],
+      background: "对话气泡与熔岩提示词",
+      backdrop: "chatgpt",
+    });
     g.groundAll();
     g.coinRow(8, 10, 3);
     /*
@@ -396,11 +425,16 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     g.flag(106);
   });
 
-  /* ================= 世界5 · 月面攻势:蹬墙刺井 ================= */
+  /* ================= 世界5 · 文心失重塔:蹬墙刺井 ================= */
 
-  defLevel(118, "5-1 问芯月面基地", 4, function (g) {
+  defLevel(118, "5-1 文心失重塔", 4, function (g) {
     g.startX = 3;
-    g.setProfile("↟", "失重塔楼", "抬头找路 · 垂直攀升", "高处不是终点，下一层才是。", "tower", 4);
+    g.setProfile("↟", "失重塔楼", "抬头找路 · 垂直攀升", "高处不是终点，下一层才是。", "tower", 4, {
+      provider: "百度 · 文心一言",
+      aliases: ["ERNIE 月梯", "百度不掉线", "文心失重塔"],
+      background: "书页卫星与月面数据塔",
+      backdrop: "ernie",
+    });
     g.groundAll();
     g.coinRow(8, 10, 3);
     /*
@@ -438,11 +472,16 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     g.flag(112);
   });
 
-  /* ================= 世界6 · 星云霓虹:移动平台才是真刺客 ================= */
+  /* ================= 世界6 · 吉米你双子谷:移动平台才是真刺客 ================= */
 
   defLevel(120, "6-1 吉米你双子谷", 5, function (g) {
     g.startX = 3;
-    g.setProfile("↔", "双子摆渡", "等平台 · 看轨迹 · 两段接力", "平台会回来，贪快才会掉。", "move", 4);
+    g.setProfile("↔", "双子摆渡", "等平台 · 看轨迹 · 两段接力", "平台会回来，贪快才会掉。", "move", 4, {
+      provider: "Google · Gemini",
+      aliases: ["双子上下文", "谷歌折返桥", "吉米你双子谷"],
+      background: "双月星云与双色数据流",
+      backdrop: "gemini",
+    });
     g.groundAll();
     g.coinRow(8, 10, 4);
     /*
@@ -475,11 +514,16 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     g.flag(114);
   });
 
-  /* ================= 世界7 · 抱抱脸乐园:这里的地板都是骗子 ================= */
+  /* ================= 世界7 · 抱抱脸游乐园:这里的地板都是骗子 ================= */
 
   defLevel(116, "7-1 抱抱脸游乐园", 6, function (g) {
     g.startX = 3;
-    g.setProfile("?", "骗子乐园", "假地板 · 倒计时 · 前冲", "它看起来像地面，不代表它是。", "crumble", 5);
+    g.setProfile("?", "骗子乐园", "假地板 · 倒计时 · 前冲", "它看起来像地面，不代表它是。", "crumble", 5, {
+      provider: "Hugging Face · 抱抱脸",
+      aliases: ["Hug 泡泡桥", "表情包陷阱", "抱抱脸乐园"],
+      background: "表情气球和倒计时彩带",
+      backdrop: "huggingface",
+    });
     g.groundAll();
     g.coinRow(8, 10, 4);
     /*
@@ -521,11 +565,16 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     g.flag(110);
   });
 
-  /* ================= 世界8 · 炼丹星火山:毕业考 ================= */
+  /* ================= 世界8 · 星火炼丹炉:毕业考 ================= */
 
   defLevel(124, "8-1 星火炼丹炉", 7, function (g) {
     g.startX = 3;
-    g.setProfile("≫", "炼丹冲刺", "速度线 · 节奏跳 · 终局路由", "别停，连续动作比单次跳得远。", "dash", 5);
+    g.setProfile("≫", "炼丹冲刺", "速度线 · 节奏跳 · 终局路由", "别停，连续动作比单次跳得远。", "dash", 5, {
+      provider: "科大讯飞 · 星火",
+      aliases: ["讯飞烧显卡", "Token 火线", "星火炼丹炉"],
+      background: "Token 火雨和炼丹数据炉",
+      backdrop: "spark",
+    });
     g.groundAll();
     g.coinRow(7, 10, 5);
     /*
@@ -558,12 +607,17 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     g.flag(119);
   });
 
-  /* ================= 终章 · Anthropic 机房:紧凑竞技场决战 ================= */
+  /* ================= 终章 · 克劳德机房:紧凑竞技场决战 ================= */
 
-  defLevel(34, "终章 Anthropic 机房", 4, function (g) {
+  defLevel(34, "终章 克劳德机房", 4, function (g) {
     g.ground(0, 33);
     g.startX = 3;
-    g.setProfile("✦", "机房决战", "预警闪避 · 自动开火 · 破盾", "红光出现时，先活下来。", "boss", 5);
+    g.setProfile("✦", "机房决战", "预警闪避 · 自动开火 · 破盾", "红光出现时，先活下来。", "boss", 5, {
+      provider: "Anthropic · Claude",
+      aliases: ["人类学服务器", "克劳德云端", "机房大模型"],
+      background: "紫金服务器与纸页流光",
+      backdrop: "claude",
+    });
     g.solid(0, 0, 14);
     g.solid(33, 0, 14); /* 机房竞技场:紧凑围墙 */
     g.plat(5, 9, 4);
