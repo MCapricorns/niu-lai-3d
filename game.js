@@ -704,7 +704,7 @@ function updateFX(dt) {
 
 /* ---------- 关卡配置（见 levels.js） ---------- */
 var LEVELS = window.createNiuLaiLevels(TAU);
-var FINAL_LV = LEVELS.length - 1; /* 终章决战关(Anthropic 机房) */
+var FINAL_LV = LEVELS.length - 1; /* 终章决战关(克劳德机房) */
 
 /* ============ 全局状态 ============ */
 var GS = {
@@ -5974,9 +5974,7 @@ function drawOverlays(c) {
     c.font = "16px " + FONT;
     var introProfile = curLV.profile || {};
     c.fillText(
-      GS.li === FINAL_LV
-        ? "Anthropic 机房就在前面——让服务器冒烟!"
-        : introProfile.challenge || "冲呀——小心 GPT 老板守关!",
+      GS.li === FINAL_LV ? "克劳德机房就在前面——让服务器冒烟!" : introProfile.challenge || "冲呀——小心 GPT 老板守关!",
       W / 2,
       326,
     );
@@ -6661,7 +6659,7 @@ function drawWin2D(c) {
   c.fillText("积分榜:金币 " + GS.sCoin + " + 击杀 " + GS.sKill + " + 奖励 " + GS.sBonus, W / 2, H / 2 + 6);
   c.fillStyle = "rgba(160,220,255,0.9)";
   c.font = "16px " + FONT;
-  c.fillText("Anthropic 机房服务器集群冒烟,牛来从过热警报中凯旋。谢谢玩!", W / 2, H / 2 + 16);
+  c.fillText("克劳德机房服务器集群冒烟,牛来从过热警报中凯旋。谢谢玩!", W / 2, H / 2 + 16);
   c.fillStyle = eggFullBadge() ? "#ffd23f" : "rgba(255,255,255,0.7)";
   c.font = "14px " + FONT;
   c.fillText("金蛋 x" + eggCount() + "/" + LEVELS.length + (eggFullBadge() ? " · 🥚 大满贯!" : ""), W / 2, H / 2 + 38);
