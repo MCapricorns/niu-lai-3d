@@ -741,6 +741,8 @@ var PL = {
   squash: 0,
   springK: 0,
   shotCd: 0,
+  airJump: false /* 二段跳可用次数(0/1),落地或蹬墙补满 */,
+  flipT: 0,
 };
 function solid(c) {
   return (
@@ -911,6 +913,8 @@ function loadLevel(i, fresh) {
   PL.dead = false;
   PL.anim = 0;
   PL.squash = 0;
+  PL.airJump = false;
+  PL.flipT = 0;
   if (fresh || GS.checkpointLevel !== i) {
     GS.checkpointLevel = i;
     GS.checkpointX = PL.x;
@@ -1111,6 +1115,7 @@ function updatePlayer(dt) {
   p.inv = Math.max(0, p.inv - dt);
   p.star = Math.max(0, p.star - dt);
   p.squash = Math.max(0, p.squash - dt);
+  p.flipT = Math.max(0, p.flipT - dt);
   GS.streakT -= dt;
   if (GS.streakT <= 0) GS.streak = 0; /* 金币连吃断了就归零 */
   var targetH = p.big ? 50 : 36;
@@ -1205,6 +1210,7 @@ function updatePlayer(dt) {
   if (p.ground) {
     p.coyote = 0.1;
     p.jbuf = Math.max(0, p.jbuf - dt);
+    p.airJump = true; /* 落地补满二段跳 */
   } else p.coyote = Math.max(0, p.coyote - dt);
   if (justPressed.jump) {
     p.jbuf = 0.12;
@@ -1217,7 +1223,7 @@ function updatePlayer(dt) {
     p.jbuf = 0;
     p.squash = 0.12;
     sJump();
-    popText(p.x + 14, p.y - 16, "哞!", "#ffd43f");
+    popText(p.x + 14, p.y - 16, "哞!", "#ffd23f");
     burst(p.x + 14, p.y + p.h, "dust", 6, 90);
   }
   if (p.jbuf > 0 && !p.ground && ((p.hitL && keys.left) || (p.hitR && keys.right))) {
@@ -1230,6 +1236,28 @@ function updatePlayer(dt) {
     sKick();
     popText(p.x + 14, p.y - 16, "蹬墙!", "#8ad4ff");
     burst(p.x + (p.hitL ? 0 : p.w), p.y + 12, "spark", 7, 180);
+  }
+  if (p.jbuf > 0 && !p.ground && p.airJump) {
+    /* 二段跳:空中再按一次跳,比地面跳稍弱 */
+    p.vy = PL.big ? -700 : -620;
+    p.airJump = false;
+    p.jbuf = 0;
+    p.flipT = 0.42;
+    sKick();
+    popText(p.x + 14, p.y - 16, "二段跳!", "#8ad4ff");
+    burst(p.x + 14, p.y + p.h, "dust", 7, 130);
+    part({
+      x: p.x + 14,
+      y: p.y + p.h,
+      vx: 0,
+      vy: 0,
+      g: 0,
+      life: 0.3,
+      t: 0,
+      type: "ring",
+      size: 4,
+      col: "rgba(140,220,255,0.9)",
+    });
   }
   if (justPressed.pound) {
     justPressed.pound = false;
@@ -4055,13 +4083,16 @@ function sync3D() {
     mCalf.position.set(inTitle ? -5.5 : wx(PL.x + 14), inTitle ? 0.45 : jy, inTitle ? 1.6 : 1.4);
     mCalf.rotation.y = inTitle ? -Math.PI / 2 + Math.sin(GT * 0.5) * 0.28 : PL.face > 0 ? 0 : Math.PI;
     mCalf.rotation.x =
-      PL.pounding && !PL.ground
-        ? GT * 15
-        : PL.star > 0
-          ? GT * 4
-          : !PL.ground && !inTitle
-            ? clamp(-PL.vy * 0.0003, -0.22, 0.26)
-            : 0;
+      PL.flipT > 0
+        ? /* 二段跳:一个完整前空翻 */
+          (1 - PL.flipT / 0.42) * TAU
+        : PL.pounding && !PL.ground
+          ? GT * 15
+          : PL.star > 0
+            ? GT * 4
+            : !PL.ground && !inTitle
+              ? clamp(-PL.vy * 0.0003, -0.22, 0.26)
+              : 0;
     var lean = clamp(-PL.vx * 0.00045, -0.16, 0.16);
     mCalf.rotation.z = (moving ? Math.sin(GT * 13) * 0.04 : PL.big ? 0 : Math.sin(GT * 2) * 0.015) + lean;
     var sq = PL.squash > 0 ? Math.sin((PL.squash / 0.12) * Math.PI) : 0;
@@ -4943,7 +4974,7 @@ function drawTitle2D(c) {
     hintText(c, "点击 / Enter 开始挑战", W / 2, 392 + bob * 0.4, "bold 20px " + FONT, "#fff", "center");
     hintText(
       c,
-      "←→/AD 移动 · 空格跳 · Shift 冲刺 · 空中↓坐地重击 · 贴墙跳=蹬墙跳",
+      "←→/AD 移动 · 空格跳 · 空中再按一次=二段跳 · Shift 冲刺",
       W / 2,
       424,
       "14px " + FONT,
@@ -4952,7 +4983,7 @@ function drawTitle2D(c) {
     );
     hintText(
       c,
-      "碰到存档水晶=存档 · 死亡从存档点重来 · Boss战自动开火",
+      "空中↓坐地重击 · 贴墙跳=蹬墙跳 · 碰到存档水晶=存档 · 死亡从存档点重来",
       W / 2,
       448,
       "14px " + FONT,

@@ -547,6 +547,41 @@ try {
     updatePlayer(1 / 60);
     out.bugs.wallKick = { vy: PL.vy, vx: PL.vx };
     keys.right = false;
+    /* —— 二段跳:空中再按一次只多跳一截,落地补满 —— */
+    loadLevel(0, true);
+    GS.state = "play";
+    PL.x = 6 * T;
+    PL.y = 8 * T;
+    PL.vx = 0;
+    PL.vy = 200;
+    PL.prevY = PL.y;
+    PL.ground = false;
+    PL.coyote = 0;
+    PL.jbuf = 0;
+    PL.airJump = true;
+    PL.dead = false;
+    PL.star = 0;
+    keys.right = false;
+    keys.left = false;
+    keys.run = false;
+    keys.jump = false;
+    justPressed.jump = true;
+    updatePlayer(1 / 60);
+    var vyAfterAir1 = PL.vy;
+    var airJumpLeft = PL.airJump;
+    justPressed.jump = true;
+    PL.vy = 200;
+    updatePlayer(1 / 60);
+    var vyAfterAir2 = PL.vy;
+    PL.ground = true;
+    PL.vy = 0;
+    updatePlayer(1 / 60);
+    out.bugs.doubleJump = {
+      first: vyAfterAir1 < -400,
+      consumed: airJumpLeft === false,
+      secondBlocked: vyAfterAir2 > -400,
+      refilledOnGround: PL.airJump === true,
+    };
     /* —— GPT 老板:奶弹可伤 —— */
     loadLevel(0, true);
     GS.state = "play";
@@ -759,6 +794,14 @@ try {
   check(
     result.bugs.wallKick && result.bugs.wallKick.vy < -500 && result.bugs.wallKick.vx < -150,
     "wall jump output regressed",
+  );
+  check(
+    result.bugs.doubleJump &&
+      result.bugs.doubleJump.first &&
+      result.bugs.doubleJump.consumed &&
+      result.bugs.doubleJump.secondBlocked &&
+      result.bugs.doubleJump.refilledOnGround,
+    "double jump regressed",
   );
   check(result.bugs.miniHit, "milk shots did not hurt the mini boss");
   check(result.bugs.bossTriggered, "final Boss did not show up when reached");
