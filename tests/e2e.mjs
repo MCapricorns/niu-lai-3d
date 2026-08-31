@@ -450,6 +450,31 @@ try {
     PL.vy = 1000;
     collideY(PL);
     out.bugs.movingPlatformFirst = { y: PL.y, expected: 370 - PL.h - 0.01, onPlatform: PL._onPlat === ents[0] };
+    /* —— 平台板悬在刺格正上方:站在板上绝不能被脚下方刺格判死 —— */
+    loadLevel(0, true);
+    GS.state = "play";
+    setTile(10, 11, 10);
+    ents = [
+      {
+        k: "move",
+        x: 10 * T - 20,
+        y: 11 * T,
+        w: 90,
+        h: 20,
+      },
+    ];
+    PL.x = 10 * T;
+    PL.prevY = 11 * T - PL.h - 8;
+    PL.y = 11 * T - PL.h + 1;
+    PL.vy = 300;
+    PL.dead = false;
+    PL.inv = 0;
+    PL.star = 0;
+    PL.pounding = false;
+    collideY(PL);
+    var onPlat = PL._onPlat === ents[0] && PL.ground;
+    hazardCheck();
+    out.bugs.platOverSpikes = { onPlat: onPlat, alive: !PL.dead && GS.state === "play" };
     function prepareVerticalSweep() {
       loadLevel(0, true);
       ents = [];
@@ -577,7 +602,7 @@ try {
     PL.vy = 0;
     updatePlayer(1 / 60);
     out.bugs.doubleJump = {
-      first: vyAfterAir1 < -400,
+      first: vyAfterAir1 < -500,
       consumed: airJumpLeft === false,
       secondBlocked: vyAfterAir2 > -400,
       refilledOnGround: PL.airJump === true,
@@ -802,6 +827,10 @@ try {
       result.bugs.doubleJump.secondBlocked &&
       result.bugs.doubleJump.refilledOnGround,
     "double jump regressed",
+  );
+  check(
+    result.bugs.platOverSpikes && result.bugs.platOverSpikes.onPlat && result.bugs.platOverSpikes.alive,
+    "standing on a platform over spikes killed the player",
   );
   check(result.bugs.miniHit, "milk shots did not hurt the mini boss");
   check(result.bugs.bossTriggered, "final Boss did not show up when reached");

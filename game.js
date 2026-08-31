@@ -541,8 +541,10 @@ window.addEventListener("keydown", function (e) {
   }
   var k = keyMap[e.code];
   if (k) {
+    /* 按住不放的 OS 重复 keydown 只维持状态,不再当"刚按下"——
+       否则跳跃键握久一点,空中就会自己冒出一次二段跳 */
+    if (!e.repeat) justPressed[k] = true;
     keys[k] = true;
-    justPressed[k] = true;
     e.preventDefault();
   }
 });
@@ -1238,8 +1240,8 @@ function updatePlayer(dt) {
     burst(p.x + (p.hitL ? 0 : p.w), p.y + 12, "spark", 7, 180);
   }
   if (p.jbuf > 0 && !p.ground && p.airJump) {
-    /* 二段跳:空中再按一次跳,比地面跳稍弱 */
-    p.vy = PL.big ? -700 : -620;
+    /* 二段跳:空中再按一次跳,略弱于地面跳;须真正新按一次(按住不算) */
+    p.vy = PL.big ? -740 : -660;
     p.airJump = false;
     p.jbuf = 0;
     p.flipT = 0.42;
@@ -1717,12 +1719,17 @@ function updateServerSmoke(dt) {
 function hazardCheck() {
   var tx0 = Math.floor((PL.x + 5) / T),
     tx1 = Math.floor((PL.x + PL.w - 5) / T);
-  var footTy = Math.floor((PL.y + PL.h + 2) / T);
-  for (var footTx = tx0; footTx <= tx1; footTx++) {
-    if (tileAt(footTx, footTy) === 10) {
-      damagePlayer();
-      addShake(2);
-      return;
+  /* 脚下+2px 刺扫描:只在你真正站在那格地面上时才算。
+     站在移动平台上时,你所站的"地面"是平台板,不是脚下方格——
+     否则平台顶面与刺格顶面对齐时,人没碰刺也会被脚下方格判死。 */
+  if (!PL._onPlat) {
+    var footTy = Math.floor((PL.y + PL.h + 2) / T);
+    for (var footTx = tx0; footTx <= tx1; footTx++) {
+      if (tileAt(footTx, footTy) === 10) {
+        damagePlayer();
+        addShake(2);
+        return;
+      }
     }
   }
   var ty0 = Math.floor((PL.y + 4) / T),
