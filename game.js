@@ -1835,7 +1835,8 @@ function updateEnemies(dt) {
         e.cd = 2.4;
         var cx2 = e.x + e.w / 2 + e.face * (e.w / 2 + 8),
           cy2 = e.y + 12; /* 炮管中段出膛 */
-        fires.push({ x: cx2, y: cy2, vx: e.face * 255, vy: -170, t: 0 });
+        /* 平射炮弹:无重力水平飞行,可跳越/掩体躲避;1秒自灭防追进安全区 */
+        fires.push({ x: cx2, y: cy2, vx: e.face * 300, vy: 0, t: 0, flat: true });
         burst(cx2, cy2, "fir", 6, 130);
         sFire();
         addShake(1);
@@ -2611,7 +2612,7 @@ function updateFires(dt) {
   for (var i = fires.length - 1; i >= 0; i--) {
     var f = fires[i];
     f.t += dt;
-    if (!f.wave) f.vy += 980 * dt; /* 冲击波贴地飞行,不受重力 */
+    if (!f.wave && !f.flat) f.vy += 980 * dt; /* 冲击波/平射弹贴地直线飞行,不受重力 */
     f.x += f.vx * dt;
     f.y += f.vy * dt;
     if (Math.random() < (f.wave ? 0.8 : 0.5))
@@ -2634,7 +2635,7 @@ function updateFires(dt) {
     if (hitP) damagePlayer();
     var tx = Math.floor(f.x / T),
       ty = Math.floor((f.y + (f.wave ? 10 : 0)) / T);
-    if (hitP || solid(tileAt(tx, ty)) || f.t > (f.wave ? 4 : 6) || f.y > H + 60) {
+    if (hitP || solid(tileAt(tx, ty)) || f.t > (f.wave ? 4 : f.flat ? 1.0 : 6) || f.y > H + 60) {
       burst(f.x, f.y, "fir", f.wave ? 10 : 8, f.wave ? 220 : 180);
       if (f.mesh && dynGroup) {
         dynGroup.remove(f.mesh);
@@ -4000,7 +4001,10 @@ function buildWorld3D() {
       else if (e.k === "miniboss") mm = buildMiniBoss();
       else if (e.k === "cannon") mm = buildCannon();
       if (mm) {
-        mm.scale.setScalar(e.k === "miniboss" ? 1.5 : e.k === "cannon" ? 2.3 : 2.3);
+        /* 炮台纵向拉伸建模:不再扁成一坨,一眼看清炮口朝向 */
+        if (e.k === "miniboss") mm.scale.setScalar(1.5);
+        else if (e.k === "cannon") mm.scale.set(2.0, 3.1, 2.0);
+        else mm.scale.setScalar(2.3);
         dynGroup.add(mm);
         e.mesh = mm;
       }

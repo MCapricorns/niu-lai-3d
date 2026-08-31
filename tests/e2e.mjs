@@ -652,8 +652,12 @@ try {
     bb.state = "idle";
     bb.hurt = 0;
     var shotsBefore = shots.length;
-    for (var af = 0; af < 30; af++) update(1 / 60);
-    out.bugs.autoFire = shots.length > shotsBefore && bb.hp === bb.maxhp;
+    var fired = false;
+    for (var af = 0; af < 90 && !fired; af++) {
+      update(1 / 60);
+      if (shots.length > shotsBefore) fired = true; /* 平射弹被护盾弹开会消失,只断言窗口内出现过 */
+    }
+    out.bugs.autoFire = fired && bb.hp === bb.maxhp;
     bb.hurt = 0;
     bb.state = "idle";
     shots.push({ x: bb.x + bb.w / 2, y: bb.y + bb.h / 2, vx: 0, vy: 0, t: 0 });
