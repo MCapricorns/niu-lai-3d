@@ -306,175 +306,248 @@ try {
   }
   await sleep(500);
   const result = await evaluate(`(function(){
-    var out={
-      initial:{state:GS.state,three:THREE_OK,error:_errMsg,calf:!!mCalf,version:VER},
-      levels:[],
-      bugs:{},
-      profiles:LEVELS.map(function(lv){
-        return {
-          title:lv.profile&&lv.profile.title,
-          motif:lv.profile&&lv.profile.motif,
-          difficulty:lv.profile&&lv.profile.difficulty,
-          provider:lv.profile&&lv.profile.provider,
-          aliases:lv.profile&&lv.profile.aliases,
-          backdrop:lv.profile&&lv.profile.backdrop
-        };
-      })
+    var out = {
+      initial: { state: GS.state, three: THREE_OK, error: _errMsg, calf: !!mCalf, version: VER },
+      dpr: { scale: DPR, canvasW: cv.width },
+      levels: LEVELS.length,
+      profile: (function () {
+        var p = LEVELS[0].profile;
+        return { title: p.title, challenge: p.challenge, tip: p.tip };
+      })(),
+      bugs: {},
     };
-    for(var i=0;i<LEVELS.length;i++){
-      _errMsg="";
-      try{ loadLevel(i,true); GS.state="pause"; render(); out.levels.push({i:i,name:curLV.name,theme:curLV.theme,error:_errMsg,calf:!!mCalf,children:dynGroup.children.length}); }
-      catch(e){ out.levels.push({i:i,name:LEVELS[i].name,thrown:String(e),error:_errMsg}); }
-    }
-    loadLevel(0,true); GS.state="pause";
-    var big=coinsEnt.find(function(c){return c.big;});
-    out.bugs.bigCoinPreserved=!!big;
-    var q=-1; for(var qi=0;qi<tiles.length;qi++){if(tiles[qi]>=4&&tiles[qi]<=7){q=qi;break;}}
-    if(q>=0){
-      var qx=q%curLV.w,qy=Math.floor(q/curLV.w); bumpBlock(qx,qy);
-      var wb=worldBlocks[qx+","+qy], mat=new THREE.Matrix4(), pos=new THREE.Vector3(), quat=new THREE.Quaternion(), sc=new THREE.Vector3();
-      for(var n=0;n<20;n++) sync3D();
-      if(wb&&wb.g){out.bugs.bump={actualY:wb.g.position.y,expectedY:tileCenter(qx,qy)[1],delta:wb.g.position.y-tileCenter(qx,qy)[1]};}
-    }
-    out.bugs.lengths=LEVELS.map(function(lv){return lv.w;});
-    var maxLavaRun=0;
-    for(var li2=0;li2<LEVELS.length;li2++){
-      var run=0;
-      for(var lx2=0;lx2<LEVELS[li2].w;lx2++){
-        if(LEVELS[li2].get(lx2,12)===11){run++;if(run>maxLavaRun)maxLavaRun=run;}else run=0;
-      }
-    }
-    out.bugs.maxLavaRun=maxLavaRun;
-    var crumbleResult=null;
-    for(var cli=0;cli<LEVELS.length&&!crumbleResult;cli++){
-      loadLevel(cli,true);
-      for(var cti=0;cti<tiles.length;cti++) if(tiles[cti]===16){
-        var ctx=cti%curLV.w,cty=Math.floor(cti/curLV.w);
-        PL.x=ctx*T+6;PL.prevY=cty*T-PL.h-8;PL.y=cty*T-PL.h+1;PL.vy=120;
-        collideY(PL);
-        var armed=!!crumbles[ctx+","+cty]&&PL.ground;
-        updateCrumbles(0.8);
-        crumbleResult={level:cli,armed:armed,collapsed:tileAt(ctx,cty)===0};
+    /* —— 大地图可渲染 —— */
+    _errMsg = "";
+    loadLevel(0, true);
+    GS.state = "pause";
+    render();
+    out.bugs.levelRender = { error: _errMsg, children: dynGroup.children.length, name: curLV.name };
+    out.bugs.saveCount = savesEnt.length;
+    out.bugs.saveMeshes = savesEnt.every(function (s) { return !!s.mesh; });
+    /* —— 大金币与问号箱 —— */
+    var big = coinsEnt.find(function (c) {
+      return c.big;
+    });
+    out.bugs.bigCoinPreserved = !!big;
+    var q = -1;
+    for (var qi = 0; qi < tiles.length; qi++) {
+      if (tiles[qi] >= 4 && tiles[qi] <= 7) {
+        q = qi;
         break;
       }
     }
-    out.bugs.crumble=crumbleResult;
-    loadLevel(0,true); GS.score=0;GS.sBonus=0;GS.time=300;GS.lives=5;PL.star=0;
-    GS.combo=3;rewardComboMilestone(0,0);
-    GS.combo=5;rewardComboMilestone(0,0);
-    GS.combo=8;rewardComboMilestone(0,0);
-    out.bugs.comboRewards={time:GS.time,score:GS.score,bonus:GS.sBonus,lives:GS.lives,star:PL.star};
-    loadLevel(3,true); out.bugs.level42Lava=Array.from(tiles).filter(function(c){return c===11;}).length;
-    out.bugs.level44Flag=LEVELS[3].flagX;
-    /* AI 必须走真实跳跃/碰撞：没有无敌，也没有虚拟地板。 */
-    setAIMode(true);
+    if (q >= 0) {
+      var qx = q % curLV.w,
+        qy = Math.floor(q / curLV.w);
+      bumpBlock(qx, qy);
+      var wb = worldBlocks[qx + "," + qy];
+      for (var n = 0; n < 20; n++) sync3D();
+      if (wb && wb.g) out.bugs.bump = { delta: wb.g.position.y - tileCenter(qx, qy)[1] };
+    }
+    /* —— 碎板 —— */
+    var crumbleResult = null;
+    loadLevel(0, true);
+    for (var cti = 0; cti < tiles.length && !crumbleResult; cti++) {
+      if (tiles[cti] === 16) {
+        var ctx = cti % curLV.w,
+          cty = Math.floor(cti / curLV.w);
+        PL.x = ctx * T + 6;
+        PL.prevY = cty * T - PL.h - 8;
+        PL.y = cty * T - PL.h + 1;
+        PL.vy = 120;
+        collideY(PL);
+        var armed = !!crumbles[ctx + "," + cty] && PL.ground;
+        updateCrumbles(0.8);
+        crumbleResult = { armed: armed, collapsed: tileAt(ctx, cty) === 0 };
+        break;
+      }
+    }
+    out.bugs.crumble = crumbleResult;
+    /* —— COMBO 里程碑(无生命版) —— */
+    loadLevel(0, true);
+    GS.score = 0;
+    GS.sBonus = 0;
+    PL.star = 0;
+    GS.combo = 3;
+    rewardComboMilestone(0, 0);
+    GS.combo = 5;
+    rewardComboMilestone(0, 0);
+    GS.combo = 8;
+    rewardComboMilestone(0, 0);
+    out.bugs.comboRewards = { score: GS.score, star: PL.star };
+    /* —— 踩刺必死(IWBTG 即死) —— */
     loadLevel(0, true);
     GS.state = "play";
-    GS.lives = 9;
     PL.inv = 0;
     PL.star = 0;
     PL.big = false;
     PL.h = 36;
     PL.dead = false;
-    PL.x = 14 * T + 10;
+    PL.x = 18 * T + 10;
     PL.y = 12 * T - PL.h;
     hazardCheck();
-    out.aiMortal = !!(PL.dead || GS.state === "dead");
+    out.bugs.spikeMortal = !!(PL.dead || GS.state === "dead");
+    /* —— 刺坑没有虚拟地板 —— */
     loadLevel(0, true);
     GS.state = "play";
-    PL.inv = 0;
-    PL.dead = false;
-    PL.x = 20 * T;
+    PL.x = 25 * T;
     PL.y = 13 * T - PL.h;
     PL.vy = 80;
     PL.prevY = PL.y - 8;
     PL.ground = false;
     collideY(PL);
-    var feet = PL.y + PL.h;
-    out.aiNoMagicFloor = !(PL.ground && Math.abs(feet - 12 * T) < 2 && tileAt(20, 12) === 0);
-    out.aiCheats = { safetyFn: typeof aiSafetyActive, safetyFlag: !!AI.safety };
-    setAIMode(false);
-    out.aiRoutes = [];
-    function botSeed(n) {
-      var s = n >>> 0;
-      Math.random = function () {
-        s = (s + 0x6d2b79f5) | 0;
-        var t = Math.imul(s ^ (s >>> 15), 1 | s);
-        t = (t ^ (t >>> 14)) >>> 0;
-        return t / 4294967296;
-      };
+    out.bugs.noMagicFloor = !PL.ground;
+    /* —— 存档点:触碰后死亡,从存档点复活,死亡计数+1 —— */
+    loadLevel(0, true);
+    GS.state = "play";
+    var deathsBefore = GS.deaths;
+    var savedAll = GS.deathsAll;
+    var saveIdx = 2;
+    PL.x = savesEnt[saveIdx].x - PL.w / 2;
+    PL.y = savesEnt[saveIdx].y - 20;
+    GS.checkpointX = 0;
+    savesEnt.forEach(function (s) {
+      s.taken = false;
+    });
+    updatePlayer(1 / 60);
+    var saveTouched = savesEnt[saveIdx].taken && GS.checkpointX > 0;
+    die();
+    var guard = 0;
+    while (GS.state !== "play" && guard++ < 400) update(1 / 60);
+    out.bugs.saveRespawn = {
+      touched: saveTouched,
+      respawnAtSave: Math.abs(PL.x - GS.checkpointX) < 2,
+      nearSave: Math.abs(PL.x - (savesEnt[saveIdx].x - T / 2 + 4)) < 2,
+      deaths: GS.deaths - deathsBefore,
+      deathsAll: GS.deathsAll - savedAll,
+    };
+    try {
+      out.bugs.deathsPersisted = parseInt(localStorage.getItem("niu_deaths") || "0", 10) >= savedAll + 1;
+    } catch (e) {}
+    /* —— 碰撞回归 —— */
+    loadLevel(0, true);
+    setTile(10, 12, 10);
+    PL.x = 10 * T;
+    PL.prevY = 420;
+    PL.y = 460;
+    PL.vy = 800;
+    collideY(PL);
+    out.bugs.spikeSurface = { y: PL.y, expected: 12 * T - PL.h - 0.01, ground: PL.ground };
+    loadLevel(0, true);
+    setTile(10, 10, 9);
+    ents = [
+      {
+        k: "move",
+        x: 10 * T - 10,
+        y: 370,
+        w: 90,
+        h: 20,
+      },
+    ];
+    PL.x = 10 * T;
+    PL.prevY = 314;
+    PL.y = 364;
+    PL.vy = 1000;
+    collideY(PL);
+    out.bugs.movingPlatformFirst = { y: PL.y, expected: 370 - PL.h - 0.01, onPlatform: PL._onPlat === ents[0] };
+    function prepareVerticalSweep() {
+      loadLevel(0, true);
+      ents = [];
+      for (var sweepY = 3; sweepY <= 12; sweepY++) setTile(10, sweepY, 0);
+      PL.x = 10 * T;
+      PL.vx = 0;
+      PL.ground = false;
+      PL.coyote = 0;
+      PL.jbuf = 0;
+      PL.springK = 0;
     }
-    for (var aiLevel = 0; aiLevel < LEVELS.length; aiLevel++) {
-      botSeed(0x220000 + aiLevel);
-      setAIMode(true);
-      startLevel(aiLevel);
-      GS.time = 300;
-      GS.lives = AI.lives;
-      var maxX = PL.x,
-        deaths = 0,
-        jumps = 0,
-        prevVy = PL.vy,
-        prevState = GS.state,
-        frames = 0,
-        passed = false,
-        goalState = aiLevel === FINAL_LV ? "winseq" : "clear";
-      for (frames = 0; frames < 60 * 240; frames++) {
-        update(1 / 60);
-        if (PL.x > maxX) maxX = PL.x;
-        if (prevVy > -80 && PL.vy < -480) jumps++;
-        prevVy = PL.vy;
-        if (GS.state === "dead" && prevState !== "dead") deaths++;
-        prevState = GS.state;
-        if (GS.state === goalState) {
-          passed = true;
-          break;
-        }
-        if (GS.state === "gameover") break;
-      }
-      out.aiRoutes.push({
-        level: aiLevel,
-        name: curLV.name,
-        passed: passed,
-        state: GS.state,
-        currentTile: Math.round((PL.x / T) * 10) / 10,
-        maxTile: Math.round((maxX / T) * 10) / 10,
-        deaths: deaths,
-        jumps: jumps,
-        retries: AI.retries,
-        status: AI.status,
-        error: _errMsg,
-      });
-      setAIMode(false);
+    function sweepDown(order) {
+      prepareVerticalSweep();
+      for (var oi = 0; oi < order.length; oi++) setTile(10, 7 + oi, order[oi]);
+      PL.prevY = 5 * T;
+      PL.y = 10 * T;
+      PL.vy = 1000;
+      collideY(PL);
+      return { y: PL.y, expected: 7 * T - PL.h - 0.01, vy: PL.vy, ground: PL.ground, hitB: PL.hitB };
     }
-    /* 终站 Boss 可达性:传送到触发点前一格,验证 Dario 登场 */
-    startLevel(LEVELS.length - 1);
-    GS.lives = 99;
-    GS.time = 300;
-    PL.x = 5.5 * T;
-    PL.y = 12 * T - 36 - 0.01;
-    PL.vx = 0;
-    PL.vy = 0;
-    var bossFrames = 0,
-      bossOK = false,
-      bossTrace = [];
-    for (bossFrames = 0; bossFrames < 60 * 40; bossFrames++) {
-      if (GS.state === "play") {
-        keys.right = true;
-        keys.run = true;
-      } else keys.right = false;
-      update(1 / 60);
-      if (bossFrames % 300 === 0)
-        bossTrace.push(bossFrames + ":" + GS.state + " x" + Math.round(PL.x) + " lives" + GS.lives);
-      if (GS.bossActive || GS.boss) {
-        bossOK = true;
+    out.bugs.verticalPriority = {
+      solidFirst: sweepDown([2, 9, 12]),
+      oneWayFirst: sweepDown([9, 12, 2]),
+      springFirst: sweepDown([12, 2, 9]),
+    };
+    prepareVerticalSweep();
+    setTile(10, 10, 9);
+    setTile(10, 9, 12);
+    setTile(10, 8, 2);
+    setTile(10, 6, 2);
+    PL.prevY = 11 * T;
+    PL.y = 4 * T;
+    PL.vy = -1200;
+    collideY(PL);
+    out.bugs.upwardSweep = {
+      y: PL.y,
+      expected: 9 * T + 0.01,
+      vy: PL.vy,
+      hitT: PL.hitT,
+      ground: PL.ground,
+      springK: PL.springK,
+    };
+    var springEntry = null;
+    for (var wk in worldBlocks) {
+      if (!springEntry && worldBlocks[wk].kind === "spring") springEntry = { key: wk, wb: worldBlocks[wk] };
+    }
+    function boundsResult(entry) {
+      if (!entry) return null;
+      var parts = entry.key.split(","),
+        ty = +parts[1];
+      var bb = new THREE.Box3().setFromObject(entry.wb.g);
+      return { bottom: bb.min.y, expectedBottom: worldY((ty + 1) * T), top: bb.max.y, expectedTop: worldY(ty * T) };
+    }
+    out.bugs.springBounds = boundsResult(springEntry);
+    /* —— 坐地重击/蹬墙跳 —— */
+    loadLevel(0, true);
+    var bt = -1;
+    for (var bti = 0; bti < tiles.length; bti++) {
+      if (tiles[bti] === 3) {
+        bt = bti;
         break;
       }
     }
+    if (bt >= 0) {
+      var bx = bt % curLV.w,
+        by = Math.floor(bt / curLV.w);
+      PL.x = bx * T + 4;
+      PL.prevY = by * T - PL.h - 8;
+      PL.y = by * T - PL.h + 1;
+      PL.vy = 950;
+      PL.pounding = true;
+      collideY(PL);
+      out.bugs.poundBrick = { broken: tileAt(bx, by) === 0 };
+    }
+    loadLevel(0, true);
+    setTile(15, 4, 2);
+    setTile(15, 5, 2);
+    setTile(15, 6, 2);
+    setTile(15, 7, 2);
+    setTile(15, 8, 2);
+    PL.x = 15 * T - PL.w - 2;
+    PL.y = 5 * T;
+    PL.vy = -100;
+    PL.vx = 0;
+    PL.ground = false;
+    PL.coyote = 0;
+    PL.jbuf = 0;
+    PL.hitR = true;
+    PL.hitL = false;
+    keys.right = true;
+    keys.left = false;
+    keys.jump = false;
+    justPressed.jump = true;
+    keys.run = false;
+    updatePlayer(1 / 60);
+    out.bugs.wallKick = { vy: PL.vy, vx: PL.vx };
     keys.right = false;
-    out.bugs.bossTrace = bossTrace;
-    out.bugs.bossTriggered = bossOK;
-    /* 奶弹射击:小Boss可击伤;终Boss护盾弹开/解除窗口可击伤 */
-    out.bugs.shots = {};
+    /* —— GPT 老板:奶弹可伤 —— */
     loadLevel(0, true);
     GS.state = "play";
     var mbE = null;
@@ -484,18 +557,43 @@ try {
       camX = mbE.x - 300;
       shots.push({ x: mbE.x + mbE.w / 2, y: mbE.y + mbE.h / 2, vx: 0, vy: 0, t: 0 });
       updateShots(0.016);
-      out.bugs.shots.miniHit = mbE.hp < mbE.maxhp;
+      out.bugs.miniHit = mbE.hp < mbE.maxhp;
     }
-    startLevel(LEVELS.length - 1);
+    /* —— Dario:入场触发 + 自动开火 + 护盾 —— */
+    loadLevel(0, true);
+    GS.state = "play";
+    PL.x = (curLV.bossAt - 0.5) * T;
+    PL.y = 12 * T - 36 - 0.01;
+    PL.vx = 0;
+    PL.vy = 0;
+    var bossFrames = 0,
+      bossOK = false,
+      bossTrace = [];
+    for (bossFrames = 0; bossFrames < 60 * 20; bossFrames++) {
+      if (GS.state === "play") {
+        keys.right = true;
+        keys.run = true;
+      } else keys.right = false;
+      update(1 / 60);
+      if (bossFrames % 240 === 0) bossTrace.push(bossFrames + ":" + GS.state + " x" + Math.round(PL.x));
+      if (GS.bossActive || GS.boss) {
+        bossOK = true;
+        break;
+      }
+    }
+    keys.right = false;
+    out.bugs.bossTrace = bossTrace;
+    out.bugs.bossTriggered = bossOK;
+    out.bugs.bossInArena = !!GS.boss && GS.boss.x > curLV.arena.x0 * T && GS.boss.x < curLV.arena.x1 * T;
     startBossIntro();
     GS.state = "play";
     var bb = GS.boss;
-    camX = 0;
+    camX = curLV.arena.x0 * T;
     bb.state = "idle";
     bb.hurt = 0;
     var shotsBefore = shots.length;
     for (var af = 0; af < 30; af++) update(1 / 60);
-    out.bugs.shots.autoFire = shots.length > shotsBefore && bb.hp === bb.maxhp;
+    out.bugs.autoFire = shots.length > shotsBefore && bb.hp === bb.maxhp;
     bb.hurt = 0;
     bb.state = "idle";
     shots.push({ x: bb.x + bb.w / 2, y: bb.y + bb.h / 2, vx: 0, vy: 0, t: 0 });
@@ -505,150 +603,83 @@ try {
     bb.hurt = 0;
     shots.push({ x: bb.x + bb.w / 2, y: bb.y + bb.h / 2, vx: 0, vy: 0, t: 0 });
     updateShots(0.016);
-    out.bugs.shots.bossDeflectOK = hpAfterDeflect === bb.maxhp;
-    out.bugs.shots.bossVulnHit = bb.hp < bb.maxhp;
-    shake = 0; GS.state = "pause"; render();
+    out.bugs.bossDeflectOK = hpAfterDeflect === bb.maxhp;
+    out.bugs.bossVulnHit = bb.hp < bb.maxhp;
+    /* —— 渲染视图 —— */
+    shake = 0;
+    GS.state = "pause";
+    render();
     out.bugs.view = { calfScale: mCalf.scale.x, calfZ: mCalf.position.z };
-    itms=[];spawnItem("milk",10,8);sync3D();out.bugs.milkScale=itms[0].mesh.scale.x;
-    loadLevel(0,true);setTile(10,12,10);PL.x=10*T;PL.prevY=420;PL.y=460;PL.vy=800;collideY(PL);out.bugs.spikeSurface={y:PL.y,expected:12*T-PL.h-0.01,ground:PL.ground};
-    loadLevel(0,true);setTile(10,10,9);ents=[{k:"move",x:10*T-10,y:370,w:90,h:20}];PL.x=10*T;PL.prevY=314;PL.y=364;PL.vy=1000;collideY(PL);out.bugs.movingPlatformFirst={y:PL.y,expected:370-PL.h-0.01,onPlatform:PL._onPlat===ents[0]};
-    function prepareVerticalSweep(){loadLevel(0,true);ents=[];for(var sweepY=3;sweepY<=12;sweepY++)setTile(10,sweepY,0);PL.x=10*T;PL.vx=0;PL.ground=false;PL.coyote=0;PL.jbuf=0;PL.springK=0;}
-    function sweepDown(order){prepareVerticalSweep();for(var oi=0;oi<order.length;oi++)setTile(10,7+oi,order[oi]);PL.prevY=5*T;PL.y=10*T;PL.vy=1000;collideY(PL);return {y:PL.y,expected:7*T-PL.h-0.01,vy:PL.vy,ground:PL.ground,hitB:PL.hitB};}
-    out.bugs.verticalPriority={solidFirst:sweepDown([2,9,12]),oneWayFirst:sweepDown([9,12,2]),springFirst:sweepDown([12,2,9])};
-    prepareVerticalSweep();setTile(10,10,9);setTile(10,9,12);setTile(10,8,2);setTile(10,6,2);PL.prevY=11*T;PL.y=4*T;PL.vy=-1200;collideY(PL);out.bugs.upwardSweep={y:PL.y,expected:9*T+0.01,vy:PL.vy,hitT:PL.hitT,ground:PL.ground,springK:PL.springK};
-    loadLevel(0,true);var springEntry=null;for(var wk in worldBlocks){if(!springEntry&&worldBlocks[wk].kind==="spring")springEntry={key:wk,wb:worldBlocks[wk]};}function boundsResult(entry){if(!entry)return null;var parts=entry.key.split(","),ty=+parts[1],bb=new THREE.Box3().setFromObject(entry.wb.g);return {bottom:bb.min.y,expectedBottom:worldY((ty+1)*T),top:bb.max.y,expectedTop:worldY(ty*T)};}out.bugs.springBounds=boundsResult(springEntry);loadLevel(1,true);var pipeEntry=null;for(var pk in worldBlocks){if(!pipeEntry&&worldBlocks[pk].kind==="pipe")pipeEntry={key:pk,wb:worldBlocks[pk]};}out.bugs.pipeBounds=boundsResult(pipeEntry);
-    loadLevel(3,true);GS.state="play"; var goal=curLV.flagX*T+T/2; PL.x=goal-PL.w/2;PL.y=11*T;PL.vx=0;PL.vy=0;PL.ground=true;updatePlayer(1/60);out.bugs.goalState=GS.state;
-    /* —— v1.9 趣味性回归:金蛋/坐地重击/蹬墙跳 —— */
-    out.fun = {};
-    out.fun.eggsPerLevel = LEVELS.map(function (lv) {
-      return (lv.eggs || []).length;
-    });
-    loadLevel(0,true);var bt=-1;for(var bti=0;bti<tiles.length;bti++){if(tiles[bti]===3){bt=bti;break;}}
-    if(bt>=0){
-      var bx=bt%curLV.w, by=Math.floor(bt/curLV.w);
-      PL.x=bx*T+4;PL.prevY=by*T-PL.h-8;PL.y=by*T-PL.h+1;PL.vy=950;PL.pounding=true;
-      collideY(PL);
-      out.fun.poundBrick={broken:tileAt(bx,by)===0,y:PL.y};
-    }
-/* 碎板测试:全关卡扫描第一块 16 碎板 */
-    loadLevel(0,true);var ct=-1;
-    for(var ctl=0;ctl<LEVELS.length&&ct<0;ctl++){loadLevel(ctl,true);for(var cti2=0;cti2<tiles.length;cti2++){if(tiles[cti2]===16){ct=cti2;break;}}}
-    if(ct>=0){
-      var cx3=ct%curLV.w, cy3=Math.floor(ct/curLV.w);
-      PL.x=cx3*T+4;PL.prevY=cy3*T-PL.h-8;PL.y=cy3*T-PL.h+1;PL.vy=950;PL.pounding=true;
-      collideY(PL);
-      out.fun.poundCrumble={collapsed:tileAt(cx3,cy3)===0};
-    }
-    loadLevel(0,true);
-    setTile(15,4,2);setTile(15,5,2);setTile(15,6,2);setTile(15,7,2);setTile(15,8,2);
-    PL.x=15*T-PL.w-2;PL.y=5*T;PL.vy=-100;PL.vx=0;PL.ground=false;PL.coyote=0;PL.jbuf=0;PL.hitR=true;PL.hitL=false;
-    keys.right=true;keys.left=false;keys.jump=false;justPressed.jump=true;keys.run=false;
-    updatePlayer(1/60);
-    out.fun.wallKick={vy:PL.vy,vx:PL.vx};
-    keys.right=false;
-    loadLevel(0,true);
-    collectEgg({x:0,y:0,taken:false});
-    out.fun.eggMarked=isEggGot(0);
-    out.fun.eggCountAfter=eggCount();
-    GS.li=0;loadLevel(0,true);GS.state="play";GS.time=300;PL.x=10*T;PL.y=10*T;PL.vy=500;PL.pounding=true;PL.prevY=PL.y-2;
-    collideY(PL);out.fun.poundLand={ground:PL.ground,pound:!!PL.pounding};
+    itms = [];
+    spawnItem("milk", 10, 8);
+    sync3D();
+    out.bugs.milkScale = itms[0].mesh.scale.x;
     return out;
   })()`);
   /*
-   * The game itself is landscape, but portrait phones need a usable selector
-   * and separated touch zones. Exercise both canvas hit regions and the CSS
-   * layout in Chromium's touch viewport.
+   * Landscape game, portrait phone: exercise canvas hit regions and the CSS
+   * touch layout in Chromium's mobile viewport at DPR 2, which also proves
+   * the HiDPI sharpness path end to end.
    */
   await send("Emulation.setDeviceMetricsOverride", {
     width: 390,
     height: 844,
-    deviceScaleFactor: 1,
+    deviceScaleFactor: 2,
     mobile: true,
   });
   await send("Emulation.setTouchEmulationEnabled", { enabled: true, configuration: "mobile" });
-  await sleep(100);
+  await sleep(150);
   const portraitUi = await evaluate(`(function(){
-    var td=document.getElementById("touch");
-    touchUI=td;
+    var td = document.getElementById("touch");
+    touchUI = td;
     td.classList.add("touch-enabled");
-    touchControlsVisible=false;
-    GS.selIdx=0;
-    GS.state="select";
+    touchControlsVisible = false;
+    GS.state = "title";
     syncTouchControls();
     render();
-    var railCount=SEL_UI.nodes.length;
-    var startBounds={x:SEL_UI.start.x,y:SEL_UI.start.y,w:SEL_UI.start.w,h:SEL_UI.start.h};
-    function tap(box){
-      var rect=cv.getBoundingClientRect();
-      cv.dispatchEvent(new PointerEvent("pointerdown",{
-        clientX:rect.left+(box.x+box.w/2)*rect.width/W,
-        clientY:rect.top+(box.y+box.h/2)*rect.height/H,
-        pointerType:"touch",
-        bubbles:true
-      }));
-    }
-    tap(SEL_UI.next);
-    var arrowWorked=GS.selIdx===1;
+    var hiddenOnTitle = !td.classList.contains("is-active");
+    var dpr2 = { scale: DPR, canvasW: cv.width };
+    /* 标题页点画布任意处(非 GitHub 徽章)直接开始 */
+    var rect = cv.getBoundingClientRect();
+    cv.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        clientX: rect.left + rect.width * 0.5,
+        clientY: rect.top + rect.height * 0.3,
+        pointerType: "touch",
+        bubbles: true,
+      }),
+    );
+    var tapStarted = GS.state === "play";
     render();
-    var target=SEL_UI.nodes[Math.min(4,SEL_UI.nodes.length-1)];
-    tap(target);
-    var nodeWorked=GS.selIdx===target.level;
-    render();
-    tap(SEL_UI.ai);
-    var aiCardWorked=AI.enabled;
-    render();
-    tap(SEL_UI.ai);
-    var aiCardReset=!AI.enabled;
-    render();
-    var chosen=GS.selIdx;
-    tap(SEL_UI.start);
-    var startWorked=GS.state==="play"&&GS.li===chosen;
-    render();
-    tap(AI_UI);
-    var aiHudWorked=AI.enabled;
-    render();
-    tap(AI_UI);
-    var aiHudReset=!AI.enabled;
-    GS.state="select";
     syncTouchControls();
-    var hiddenOnSelect=!td.classList.contains("is-active");
-    GS.state="play";
-    syncTouchControls();
-    var shownInPlay=td.classList.contains("is-active");
-    var ids=["btnL","btnR","btnB","btnJ","btnP"];
-    var boxes=ids.map(function(id){
-      var b=document.getElementById(id).getBoundingClientRect();
-      return {id:id,left:b.left,top:b.top,right:b.right,bottom:b.bottom,width:b.width,height:b.height};
+    var shownInPlay = td.classList.contains("is-active");
+    var ids = ["btnL", "btnR", "btnB", "btnJ", "btnP"];
+    var boxes = ids.map(function (id) {
+      var b = document.getElementById(id).getBoundingClientRect();
+      return { id: id, left: b.left, top: b.top, right: b.right, bottom: b.bottom, width: b.width, height: b.height };
     });
-    var overlaps=[];
-    for(var i=0;i<boxes.length;i++) for(var j=i+1;j<boxes.length;j++){
-      var a=boxes[i],b=boxes[j];
-      if(a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top) overlaps.push(a.id+"+"+b.id);
-    }
-    var canvasRect=cv.getBoundingClientRect();
-    GS.state="select";
+    var overlaps = [];
+    for (var i = 0; i < boxes.length; i++)
+      for (var j = i + 1; j < boxes.length; j++) {
+        var a = boxes[i],
+          b2 = boxes[j];
+        if (a.left < b2.right && a.right > b2.left && a.top < b2.bottom && a.bottom > b2.top) overlaps.push(a.id + "+" + b2.id);
+      }
+    var canvasRect = cv.getBoundingClientRect();
+    GS.state = "title";
     syncTouchControls();
     return {
-      viewport:{w:window.innerWidth,h:window.innerHeight,coarse:matchMedia("(pointer: coarse)").matches},
-      selector:{
-        railCount:railCount,
-        startBounds:startBounds,
-        arrowWorked:arrowWorked,
-        nodeWorked:nodeWorked,
-        startWorked:startWorked,
-        aiCardWorked:aiCardWorked,
-        aiCardReset:aiCardReset,
-        aiHudWorked:aiHudWorked,
-        aiHudReset:aiHudReset
+      viewport: { w: window.innerWidth, h: window.innerHeight, coarse: matchMedia("(pointer: coarse)").matches },
+      hiddenOnTitle: hiddenOnTitle,
+      tapStarted: tapStarted,
+      shownInPlay: shownInPlay,
+      dpr: dpr2,
+      controls: {
+        enabled: td.classList.contains("touch-enabled"),
+        overlaps: overlaps,
+        boxes: boxes,
       },
-      controls:{
-        enabled:td.classList.contains("touch-enabled"),
-        hiddenOnSelect:hiddenOnSelect,
-        shownInPlay:shownInPlay,
-        overlaps:overlaps,
-        boxes:boxes
-      },
-      canvas:{top:canvasRect.top,width:canvasRect.width,height:canvasRect.height}
+      canvas: { top: canvasRect.top, width: canvasRect.width, height: canvasRect.height },
     };
   })()`);
   await send("Emulation.clearDeviceMetricsOverride");
@@ -659,32 +690,30 @@ try {
   };
   const near = (actual, expected, tolerance = 0.01) => Math.abs(actual - expected) <= tolerance;
   check(result.initial.three && result.initial.calf && !result.initial.error, "game failed to initialize");
-  check(result.levels.length === 9, `expected 9 levels, got ${result.levels.length}`);
+  check(result.levels === 1, `expected a single continuous stage, got ${result.levels}`);
+  check(result.profile.title && result.profile.challenge && result.profile.tip, "stage profile metadata missing");
   check(
-    result.profiles.length === 9 &&
-      result.profiles.every(
-        (profile) =>
-          profile.title &&
-          profile.motif &&
-          profile.difficulty &&
-          profile.provider &&
-          Array.isArray(profile.aliases) &&
-          profile.aliases.length >= 3 &&
-          profile.backdrop,
-      ) &&
-      new Set(result.profiles.map((profile) => profile.motif)).size === result.profiles.length &&
-      new Set(result.profiles.map((profile) => profile.backdrop)).size === result.profiles.length,
-    "each level should expose a distinct themed identity",
+    result.bugs.levelRender && !result.bugs.levelRender.error && result.bugs.levelRender.children > 0,
+    "stage failed to render",
   );
-  for (const level of result.levels) check(!level.error && !level.thrown, `level ${level.i + 1} failed to render`);
+  check(result.bugs.saveCount >= 4 && result.bugs.saveMeshes, "save points missing or unrendered");
   check(result.bugs.bigCoinPreserved, "large coin metadata was lost");
   check(near(result.bugs.bump.delta, 0), "used item box moved away from its tile");
   check(result.bugs.crumble?.armed && result.bugs.crumble?.collapsed, "crumble platform regression");
   check(
-    result.bugs.view && result.bugs.view.calfScale > 1.0 && result.bugs.view.calfScale < 3.5,
-    "player model scale out of range",
+    result.bugs.comboRewards.score === 4300 && result.bugs.comboRewards.star > 0,
+    "combo milestone rewards regressed",
   );
-  check(near(result.bugs.milkScale, 3.2), "milk model scale regressed");
+  check(result.bugs.spikeMortal, "spikes no longer kill on touch");
+  check(result.bugs.noMagicFloor, "a virtual floor appeared over the spike pit");
+  check(
+    result.bugs.saveRespawn.touched &&
+      result.bugs.saveRespawn.respawnAtSave &&
+      result.bugs.saveRespawn.nearSave &&
+      result.bugs.saveRespawn.deaths === 1,
+    "death did not respawn at the touched save point with a death counted",
+  );
+  check(result.bugs.deathsPersisted, "death counter did not persist");
   check(
     result.bugs.spikeSurface.ground && near(result.bugs.spikeSurface.y, result.bugs.spikeSurface.expected),
     "spike collision surface regressed",
@@ -719,69 +748,38 @@ try {
       near(result.bugs.upwardSweep.y, result.bugs.upwardSweep.expected),
     "high-speed upward sweep missed the first solid contact",
   );
-  for (const [name, bounds] of [
-    ["spring", result.bugs.springBounds],
-    ["pipe", result.bugs.pipeBounds],
-  ]) {
-    check(
-      bounds && near(bounds.bottom, bounds.expectedBottom, 0.08) && near(bounds.top, bounds.expectedTop, 0.08),
-      `${name} model is not grounded`,
-    );
-  }
-  check(result.bugs.goalState === "clear", "visible flag did not clear the level");
-  check(result.bugs.bossTriggered, "final Boss did not show up when reached");
-  /* v1.12 射击系统断言 */
-  check(result.bugs.shots && result.bugs.shots.autoFire, "milk shots did not auto-fire during boss fight");
-  check(result.bugs.shots && result.bugs.shots.miniHit, "milk shots did not hurt the mini boss");
-  check(result.bugs.shots && result.bugs.shots.bossDeflectOK, "boss shield did not deflect shots");
-  check(result.bugs.shots && result.bugs.shots.bossVulnHit, "shots did not hurt the vulnerable boss");
-  /* v1.9+ 趣味性功能断言 */
+  const springBounds = result.bugs.springBounds;
   check(
-    result.fun && result.fun.eggsPerLevel.length === 9 && result.fun.eggsPerLevel.every((n) => n === 1),
-    "each level should contain exactly 1 golden egg",
+    springBounds &&
+      near(springBounds.bottom, springBounds.expectedBottom, 0.08) &&
+      near(springBounds.top, springBounds.expectedTop, 0.08),
+    "spring model is not grounded",
   );
-  check(result.fun?.poundBrick?.broken, "ground pound failed to break a brick");
-  check(result.fun?.poundCrumble?.collapsed, "ground pound failed to collapse a crumble tile");
+  check(result.bugs.poundBrick?.broken, "ground pound failed to break a brick");
   check(
-    result.fun?.wallKick && result.fun.wallKick.vy < -500 && result.fun.wallKick.vx < -150,
+    result.bugs.wallKick && result.bugs.wallKick.vy < -500 && result.bugs.wallKick.vx < -150,
     "wall jump output regressed",
   );
-  check(result.fun?.eggMarked && result.fun.eggCountAfter >= 1, "golden egg collection did not persist");
-  /* AI 必须真跳、真死，不能再靠无敌地板蒙混；通关数作为进度信息。 */
-  check(result.aiMortal, "AI mode still ignores spike damage");
-  check(result.aiNoMagicFloor, "AI mode still plants a virtual floor over pits");
+  check(result.bugs.miniHit, "milk shots did not hurt the mini boss");
+  check(result.bugs.bossTriggered, "final Boss did not show up when reached");
+  check(result.bugs.bossInArena, "final Boss spawned outside the arena");
+  check(result.bugs.autoFire, "milk shots did not auto-fire during boss fight");
+  check(result.bugs.bossDeflectOK, "boss shield did not deflect shots");
+  check(result.bugs.bossVulnHit, "shots did not hurt the vulnerable boss");
   check(
-    result.aiCheats && result.aiCheats.safetyFn === "undefined" && !result.aiCheats.safetyFlag,
-    "AI safety cheat helpers are still present",
+    result.bugs.view && result.bugs.view.calfScale > 1.0 && result.bugs.view.calfScale < 3.5,
+    "player model scale out of range",
   );
-  let jumpedLevels = 0;
-  for (const route of result.aiRoutes) {
-    check(!route.error, `AI route error in ${route.name}: ${route.error}`);
-    check(route.maxTile > 8, `AI made no progress in ${route.name} (max=${route.maxTile}, status=${route.status})`);
-    if (route.jumps > 0) jumpedLevels++;
-  }
-  check(jumpedLevels >= 6, `AI jumped in only ${jumpedLevels}/9 levels`);
-  check(
-    result.aiRoutes.some((route) => route.passed),
-    "AI did not finish any level with real jumps",
-  );
+  check(near(result.bugs.milkScale, 3.2), "milk model scale regressed");
   check(portraitUi.viewport.h > portraitUi.viewport.w, "portrait viewport was not applied");
-  check(portraitUi.selector.railCount === 9, "portrait selector did not expose every current level");
   check(
-    portraitUi.selector.startBounds.w >= 250 && portraitUi.selector.startBounds.h >= 50,
-    "portrait selector start target is too small",
+    portraitUi.dpr.scale === 2 && portraitUi.dpr.canvasW === 1920,
+    "HiDPI canvas did not render at devicePixelRatio 2",
   );
-  check(portraitUi.selector.arrowWorked, "selector next arrow did not change levels");
-  check(portraitUi.selector.nodeWorked, "selector level rail did not select a level");
-  check(portraitUi.selector.startWorked, "selector start button did not launch the chosen level");
-  check(
-    portraitUi.selector.aiCardWorked && portraitUi.selector.aiCardReset,
-    "selector AI toggle did not switch cleanly",
-  );
-  check(portraitUi.selector.aiHudWorked && portraitUi.selector.aiHudReset, "in-game AI toggle did not switch cleanly");
+  check(portraitUi.hiddenOnTitle, "touch controls were visible over the title");
+  check(portraitUi.tapStarted, "tapping the title did not start the challenge");
+  check(portraitUi.shownInPlay, "touch controls did not appear during play");
   check(portraitUi.controls.enabled, "touch controls were not initialized for portrait UI");
-  check(portraitUi.controls.hiddenOnSelect, "touch controls were visible over the selector");
-  check(portraitUi.controls.shownInPlay, "touch controls did not appear during play");
   check(
     portraitUi.controls.boxes.every((box) => box.width >= 50 && box.height >= 50),
     "portrait touch target became too small",
@@ -790,16 +788,8 @@ try {
     portraitUi.controls.overlaps.length === 0,
     `portrait touch controls overlap: ${portraitUi.controls.overlaps.join(", ")}`,
   );
-  const failedAIRoutes = result.aiRoutes.filter((r) => !r.passed);
-  if (failedAIRoutes.length)
-    console.log(
-      "AI ROUTES (info):",
-      JSON.stringify(
-        failedAIRoutes.map((r) => ({ n: r.name, cur: r.currentTile, max: r.maxTile, d: r.deaths, s: r.status })),
-      ),
-    );
   console.log(
-    `Edge E2E: levels ${result.levels.length}/${result.levels.length}, AI-clearable ${result.aiRoutes.filter((route) => route.passed).length}/${result.aiRoutes.length}, boss ${result.bugs.bossTriggered ? "OK" : "MISSING"}`,
+    `Edge E2E: stage "${result.profile.title}" saves=${result.bugs.saveCount} respawn=${JSON.stringify(result.bugs.saveRespawn)} boss=${result.bugs.bossTriggered ? "OK" : "MISSING"}`,
   );
   console.log("VIEW:", JSON.stringify(result.bugs.view), "BOSSTRACE:", JSON.stringify(result.bugs.bossTrace));
   console.log("PORTRAIT:", JSON.stringify(portraitUi));

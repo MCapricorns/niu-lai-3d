@@ -1,8 +1,8 @@
 {
   "name": "niu-lai-3d",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "A zero-runtime-dependency Three.js platform game.",
+  "description": "A zero-runtime-dependency Three.js IWBTG-style precision platformer.",
   "scripts": {
     "format": "prettier --write game.js levels.js mapengine.js tests/e2e.mjs index.html README.md",
     "format:check": "prettier --check game.js levels.js mapengine.js tests/e2e.mjs index.html README.md",

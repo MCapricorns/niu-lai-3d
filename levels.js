@@ -1,29 +1,27 @@
 "use strict";
 
 /**
- * v2.2.0 模型梗世界观 + AI 路线演示 · 全关像素级布局
+ * v3.0.0 "I Wanna Be The Ox" · 单一连续跳刺大地图
  *
- * 设计哲学(致敬 IWBTG 系列"试错—掌握"循环):
- * - 每段障碍只有一个意图:刺坑=跳不过就死,顶刺=禁跳低走,窄板=一个像素的落点,
- *   碎板=看起来安全的地板,弹簧=要么弹上天堂要么弹进地狱。
- * - 段与段之间留 1-2 格"呼吸平台",绝不无脑堆机关;
- * - 所有尺寸按真实物理标定(T=40px):
- *   小跳顶点≈4.7 格(190px) / 跑跳水平≈5.5 格(222px)
- *   冲跳水平≈9.8 格(393px,Shift) / 弹簧顶点≈10.8 格(432px,按住跳)
- *   蹬墙跳≈4.2 格(169px)/跳
- * - 敌人领土制:一关 1-3 只地面怪独占巡逻区,周身 3 格内无刺/坑/炮/熔岩;
- *   乌鸦只压"禁跳线"(y8 行),绝不飘在窄板/弹簧正上;
- * - 每关末尾 flagX-7..flagX 绝对干净(无刺/无怪/无炮),守关 GPT 老板五格坪台必稳。
+ * 直接照抄 IWBTG 系列的流程骨架:
+ * - 一张长图从头走到尾,没有选关,没有小关分段;
+ * - 每个大段之间放一枚发光存档点(save),碰到即存,死亡从存档点满血复活;
+ * - 即死陷阱密度拉满:贴地刺/刺坑/顶刺禁跳道/碎板假桥/炮火走廊/
+ *   岩浆跳岛/移动平台摆渡/40px 窄板刺海,一段只考一件事;
+ * - 段与段之间留 2-6 格绝对干净的"呼吸平台",失败原因永远可读;
+ * - 终点是 GPT 老板守关 + Anthropic Dario 机房决战,打倒即通关。
+ *
+ * 物理标定(T=40px):小跳顶点≈4.7格 / 跑跳水平≈5.5格 /
+ * 冲跳(Shift)≈9.8格 / 弹簧(按住跳)≈10.8格 / 蹬墙跳≈4.2格。
  *
  * Tile legend:
  * 0 empty, 1 ground, 2 solid, 3 brick, 4 coin box, 5 milk box,
  * 6 star box, 7 bell box, 8 used box, 9 one-way platform, 10 spike,
  * 11 lava, 12 spring, 13 pipe top, 14 pipe body, 15 flag, 16 crumble,
- * 17 gate (opens when the guarding GPT 老板 is defeated).
+ * 17 gate.
  */
 window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
   var T = window.ME.TILE; /* 瓦片语义与地图引擎共享见 mapengine.js */
-  /* ---------- 关卡数据 ---------- */
   function LV(w, name, theme) {
     this.w = w;
     this.h = 15;
@@ -32,26 +30,16 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     this.theme = theme;
     this.ents = [];
     this.coins = [];
-    this.eggs = [];
+    this.saves = [];
     this.startX = 3;
-    this.flagX = -1;
-    this.flagY = 8;
-    /*
-     * 选关卡片和开场提示共用的“关卡名片”。这不是单纯换皮：
-     * 每一关先定义一个核心动作，再围绕它排障碍，避免所有地图
-     * 都退化成“刺坑 + 窄板 + 狼”的同一道题。
-     */
+    this.flagX = -1; /* 无旗:打倒 Dario 即通关 */
+    this.bossAt = -1; /* 玩家越过 bossAt*T 触发 Dario 登场 */
+    this.arena = null; /* Dario 竞技场左右墙(瓦片列) */
     this.profile = {
-      icon: "!",
-      title: "未知试炼",
+      icon: "☠",
+      title: "跳刺试炼",
       challenge: "观察路线",
       tip: "先看清楚，再起跳。",
-      motif: "spike",
-      difficulty: 1,
-      provider: "",
-      aliases: [],
-      background: "",
-      backdrop: "grok",
     };
   }
   LV.prototype.set = function (x, y, c) {
@@ -117,34 +105,25 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
   LV.prototype.raven = function (x, y) {
     this.ent({ k: "raven", x: x, y: y });
   };
-  LV.prototype.bird = function (x, y) {
-    this.ent({ k: "bird", x: x, y: y });
+  LV.prototype.miniboss = function (x) {
+    this.ent({ k: "miniboss", x: x });
   };
   LV.prototype.spring = function (x, y) {
     this.set(x, y === undefined ? 12 : y, T.SPRING);
   };
-  LV.prototype.spike = function (x, n) {
-    this.spikeAt(x, 12, n);
-  };
-  LV.prototype.spikeAt = function (x, y, n) {
-    for (var i = 0; i < n; i++) this.set(x + i, y, T.SPIKE);
-  };
-  /* 刺田:任意行铺连续尖刺(默认 11 行贴地) */
-  LV.prototype.spikeField = function (x1, x2, y) {
-    this.spikeAt(x1, y === undefined ? 11 : y, x2 - x1 + 1);
-  };
   /* 贴地刺带:11 行铺刺(下方 12 行仍是地面),踏进=踩刺,只能跳过 */
   LV.prototype.spikeBelt = function (x1, x2) {
-    this.spikeField(x1, x2, 11);
+    for (var x = x1; x <= x2; x++) this.set(x, 11, T.SPIKE);
   };
   /* 刺坑:挖 10..14 行,刺贴 11 行。掉进去撞刺,跳不过去就完蛋 */
   LV.prototype.spikePit = function (x1, x2) {
     this.pit(x1, x2);
-    this.spikeAt(x1, 11, x2 - x1 + 1);
+    for (var x = x1; x <= x2; x++) this.set(x, 11, T.SPIKE);
   };
   /* 顶刺屋檐:y 行连续尖刺(默认 10 行)。站地面走安全,起跳即死 */
   LV.prototype.ceil = function (x1, x2, y) {
-    this.spikeAt(x1, y === undefined ? 10 : y, x2 - x1 + 1);
+    y = y === undefined ? 10 : y;
+    for (var x = x1; x <= x2; x++) this.set(x, y, T.SPIKE);
   };
   LV.prototype.lava = function (x, n) {
     for (var i = 0; i < n; i++) {
@@ -153,24 +132,8 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
       this.set(x + i, 14, T.LAVA);
     }
   };
-  LV.prototype.pipe = function (x, h) {
-    var top = 12 - h;
-    this.set(x, top, T.PIPETOP);
-    for (var y = top + 1; y <= 12; y++) this.set(x, y, T.PIPEBODY);
-  };
   LV.prototype.cannon = function (x, y) {
     this.ent({ k: "cannon", x: x, y: y === undefined ? 11.25 : y });
-  };
-  /* 旗门:守关老板死亡前封住旗杆(5..11 行铁柱,轰不开跳不过) */
-  LV.prototype.gate = function (x) {
-    for (var y = 5; y <= 11; y++) this.set(x, y, T.GATE);
-  };
-  LV.prototype.flag = function (x) {
-    this.flagX = x;
-    this.flagY = 8;
-    for (var y = 8; y <= 11; y++) this.set(x, y, T.FLAG);
-    this.set(x, 12, T.SOLID);
-    this.gate(x - 2); /* 旗门与旗杆绑定生成,保证守关 Boss 必打 */
   };
   LV.prototype.mplat = function (x1, y1, x2, y2) {
     this.ents.push({ k: "move", x: x1, y: y1, x2: x2, y2: y2 });
@@ -183,29 +146,12 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     n = n || 1;
     for (var i = 0; i < n; i++) this.coins.push({ x: x + i, y: y, t: Math.random() * TAU, big: true });
   };
-  /* 金蛋:每关藏 1 颗在危险/刁钻位置,捡齐大满贯 */
-  LV.prototype.egg = function (x, y) {
-    this.eggs.push({ x: x, y: y, t: Math.random() * TAU });
+  /* IWBTG 存档点:碰到即存,死亡从这里满状态重来 */
+  LV.prototype.save = function (x) {
+    this.saves.push({ x: x, y: 11 });
   };
-  LV.prototype.cellar = function (x1, x2, floorY) {
-    this.fill(x1, x2, 10, 12, T.EMPTY);
-    this.fill(x1, x2, floorY === undefined ? 13 : floorY, floorY === undefined ? 13 : floorY, T.GROUND);
-    this.fill(x1, x2, 11, 11, T.BRICK);
-  };
-  LV.prototype.setProfile = function (icon, title, challenge, tip, motif, difficulty, flavor) {
-    flavor = flavor || {};
-    this.profile = {
-      icon: icon,
-      title: title,
-      challenge: challenge,
-      tip: tip,
-      motif: motif,
-      difficulty: difficulty || 1,
-      provider: flavor.provider || "",
-      aliases: flavor.aliases || [],
-      background: flavor.background || "",
-      backdrop: flavor.backdrop || motif,
-    };
+  LV.prototype.setProfile = function (icon, title, challenge, tip) {
+    this.profile = { icon: icon, title: title, challenge: challenge, tip: tip };
   };
 
   var LEVELS = [];
@@ -216,417 +162,116 @@ window.createNiuLaiLevels = function createNiuLaiLevels(TAU) {
     LEVELS.push(lv);
   }
 
-  /* ================= 世界1 · 格罗克草原:把"刺=死"烙进肌肉 ================= */
+  /* ==================== I Wanna Be The Ox · 一张图走到底 ==================== */
 
-  defLevel(112, "1-1 格罗克草原", 0, function (g) {
+  defLevel(264, "I Wanna Be The Ox", 5, function (g) {
     g.startX = 3;
-    g.setProfile("▲", "刺缝入门", "短跳 · 窄板 · 假桥", "低跳比莽撞更可靠。", "spike", 1, {
-      provider: "xAI · Grok",
-      aliases: ["X 观刺台", "懂刺草场", "格罗克草原"],
-      background: "X 流星与实时吃瓜卫星",
-      backdrop: "grok",
-    });
+    g.setProfile("☠", "跳刺试炼", "一段一考 · 存档重生 · 死亡计数", "会死很多次。每次都比上一次走得更远。");
+
+    /* —— 0..15 起点平原:呼吸区,把操作热开 —— */
     g.groundAll();
     g.coinRow(8, 10, 3);
-    /* A 刺缝:2 格贴地刺,第一课——跳过去 */
-    g.spikeBelt(14, 15);
-    /* B 刺坑:4 格洞 + 洞底刺。落下必死,只能跳(跑跳 5.5 格正好) */
-    g.spikePit(19, 22);
-    g.coinArc(19, 9);
-    g.bigc(21, 6); /* 大金币悬在跳坑弧顶:头掠过它,别贪心多看坑底 */
-    /* C 双丘:连吐两口气的起跳点,落点都是 2 格高台 */
-    g.mesa(25, 26, 11);
-    g.mesa(30, 31, 10);
-    /* D 窄板刺海:刺池 34..39,只有两块 40px 宽浮板。
-       精确到像素——板间的空档全是刺(站板=安全,掉板=死) */
-    g.pit(34, 39);
-    g.spikeField(34, 39, 11);
-    g.plat(36, 11, 1);
-    g.plat(38, 11, 1);
-    g.egg(37, 10); /* 金蛋悬在板与刺之间,轻跳擦中,过不去就下坠 */
-    /* E 顶刺禁跳道:天花板 4 格尖刺直凿 10 行。走,别跳 */
-    g.ceil(43, 46);
-    g.coin(44, 11);
-    /* F 碎板假桥:看起来是桥,踩上 0.75s 就塌。跑过去别停 */
-    g.pit(50, 53);
-    g.cr(50, 4);
-    /* G 弹簧奶:一弹冲天撞奶箱(按住跳飘满 10.8 格才够高) */
-    g.spring(57);
-    g.q(57, 8, 5);
-    /* H 跃跳刺带:4 格贴地刺,标准跑跳够到的极限距离 */
-    g.spikeBelt(63, 66);
-    g.coinRow(63, 9, 4);
-    /* I 狼原:一只狼独占 67..77 巡逻区,两侧都被地形阻死,不越界 */
-    g.wolf(71);
-    /* J 门形砖架:奶箱嵌砖架(箱下有柱,不孤悬) */
-    g.solid(78, 9, 11);
-    g.solid(82, 9, 11);
-    g.brick(78, 8, 5);
-    g.q(80, 8, 1);
-    /* K 禁跳鸦:低飞 y8 线,平地走过去没事,跳起就撞鸦 */
-    g.raven(88, 8);
-    /* L 终刺坑:旗门前 3 格坑,别在 99% 处交学费 */
-    g.spikePit(94, 96);
-    /* 坪台 101..108 绝对干净,flag 108,守关老板五格坪台必稳 */
-    g.flag(108);
-  });
+    /* 门形砖架:开场教顶砖/坐地重击,金币盒架在门梁正中 */
+    g.solid(9, 9, 11);
+    g.solid(13, 9, 11);
+    g.brick(9, 8, 5);
+    g.q(11, 8, 4);
 
-  /* ================= 世界2 · 戈壁沙海:炮火准时送达 ================= */
+    /* —— 16..43 S1 刺缝入门:刺=死,烙进肌肉 —— */
+    g.spikeBelt(18, 19); /* 第一课:2 格贴地刺,跳过去 */
+    g.wolf(21); /* 狼的领土 20..23,两侧被刺/坑锁死 */
+    g.spikePit(24, 27); /* 4 格刺坑,跑跳 5.5 格正好 */
+    g.coinArc(24, 9);
+    g.bigc(26, 7);
+    g.mesa(31, 32, 11); /* 双丘换气 */
+    g.ceil(35, 38); /* 顶刺禁跳道:走,别跳 */
+    g.coinRow(35, 11, 4);
+    g.spikeBelt(41, 43);
 
-  defLevel(118, "2-1 豆包戈壁", 1, function (g) {
-    g.startX = 3;
-    g.setProfile("◉", "炮火节拍", "读炮口 · 穿火线 · 借掩体", "听到炮声别慌，等出膛再走。", "cannon", 2, {
-      provider: "字节跳动 · 豆包",
-      aliases: ["字节风沙线", "弹幕沙丘", "豆包戈壁"],
-      background: "豆形云和字节沙暴",
-      backdrop: "doubao",
-    });
-    g.groundAll();
-    g.coinRow(7, 10, 4);
-    /*
-     * 这里只有“看炮口”的一道题：每段都有能停、能观察的掩体，
-     * 然后再穿过下一条火线。避免把炮、刺、碎板混成不可读的噪音。
-     */
-    g.pipe(12, 2); /* 第一根矮管是起跑掩体 */
-    g.cannon(16);
-    g.spikePit(21, 23); /* 炮后跳沟，逼玩家在炮弹间隙起跳 */
-    g.mesa(27, 28, 10);
-    g.cannon(31);
-    g.pipe(36, 3); /* 高管挡住第二门炮的平射线 */
-    g.spikeBelt(40, 42);
-    g.ceil(46, 50); /* 子弹来了也只能低走 */
-    g.coinRow(46, 11, 4);
-    g.cannon(53);
-    g.mesa(58, 59, 10);
-    g.spikePit(63, 66);
-    g.plat(65, 11, 1); /* 唯一精确落点，用来换节奏 */
-    g.cannon(71);
-    g.pipe(76, 2);
-    g.spikeBelt(81, 83);
-    g.pipe(87, 3);
-    g.egg(88, 8); /* 从掩体顶轻跳可拿，贪炮线就会吃亏 */
-    g.cannon(92);
-    g.spikePit(96, 99);
-    g.mesa(102, 103, 10);
-    /* 坪台 107..114 绝对干净,flag 114 */
-    g.flag(114);
-  });
+    /* —— 44..50 存档点 1(呼吸平台,绝对干净) —— */
+    g.save(47);
+    g.coinRow(45, 10, 2);
 
-  /* ================= 世界3 · 千问冰湖:冰湖上的像素即正义 ================= */
+    /* —— 51..72 S2 碎板假桥:看起来是桥,踩上就倒计时 —— */
+    g.pit(53, 60);
+    g.cr(53, 8, 12); /* 8 格碎板:跑过去别停 */
+    g.coinRow(54, 10, 6);
+    g.ground(61, 64);
+    g.pit(65, 72);
+    g.cr(65, 4, 12); /* 半桥—真空档—半桥:空档 69 要跳 */
+    g.cr(70, 3, 12);
+    g.coinArc(67, 10);
 
-  defLevel(124, "3-1 千问冰湖", 2, function (g) {
-    g.startX = 3;
-    g.setProfile("═", "冰湖棋盘", "单格落点 · 连跳节奏", "每块板都是下一跳的起点。", "plank", 3, {
-      provider: "阿里云 · 通义千问",
-      aliases: ["一千零一跳", "Qwen 月背", "千问冰湖"],
-      background: "千问月相与镜面冰环",
-      backdrop: "qwen",
-    });
-    g.groundAll();
-    g.coinRow(8, 10, 3);
-    /* A 冰湖窄板:59 格刺湖,18 块 40px 宽浮板,间距 3 格、高低交替 1 格。
-       一跳一滴汗,一滑一条命。这就是 IWBTG 的灵魂画面 */
-    g.pit(13, 71);
-    g.spikeField(13, 71, 11);
-    g.plat(15, 11, 1);
-    g.plat(18, 10, 1);
-    g.plat(21, 11, 1);
-    g.plat(24, 10, 1);
-    g.plat(27, 11, 1);
-    g.plat(30, 10, 1);
-    g.plat(33, 11, 1);
-    g.plat(36, 10, 1);
-    g.plat(39, 11, 1);
-    g.plat(42, 10, 1);
-    g.plat(45, 11, 1);
-    g.plat(48, 10, 1);
-    g.plat(51, 11, 1);
-    g.plat(54, 10, 1);
-    g.plat(57, 11, 1);
-    g.plat(60, 10, 1);
-    g.plat(63, 11, 1);
-    g.plat(66, 10, 1);
-    g.plat(69, 11, 1);
-    /* 蛋在湖中央的板间:轻跳擦板间得手,失手=坠湖 */
-    g.egg(42, 9);
-    /* B 湖心岛:唯一能喘气的地方(y8 禁跳鸦守着,跳=撞鸦) */
-    g.ground(73, 78);
-    g.raven(76, 7);
-    g.coinRow(74, 10, 3);
-    /* C 二段刺坑:18 格刺池,4 块板 4 格间距爬高,步步惊心 */
-    g.spikePit(82, 96);
-    g.plat(85, 11, 1);
-    g.plat(89, 10, 1);
-    g.plat(93, 11, 1);
-    g.plat(97, 10, 1);
-    /* D 雪原休整:雪丘 */
-    g.mesa(103, 105, 10);
-    g.coinRow(103, 9, 3);
-    /* E 末刺带:最后 3 格贴地刺,冲刺而过 */
-    g.spikeBelt(111, 113);
-    /* 坪台 114..122 平坦,flag 119 */
-    g.flag(119);
-  });
+    /* —— 73..102 S3 炮火走廊:读炮口,等出膛再走 —— */
+    g.cannon(82);
+    g.mesa(86, 87, 10); /* 掩体 */
+    g.spikePit(90, 93); /* 炮后跳沟:在弹丸间隙起跳 */
+    g.cannon(96);
+    g.ceil(99, 102); /* 子弹来了也只能低走 */
+    g.coinRow(99, 11, 4);
 
-  /* ================= 世界4 · 恰特鸡屁踢火山:熔岩不怜悯任何人 ================= */
+    /* —— 103..108 存档点 2 —— */
+    g.save(106);
 
-  defLevel(112, "4-1 恰特鸡屁踢火山", 3, function (g) {
-    g.startX = 3;
-    g.setProfile("♨", "熔岩竖井", "跳岛 · 蹬墙 · 高低路线", "看见岩浆，先找下一座岛。", "lava", 3, {
-      provider: "OpenAI · ChatGPT",
-      aliases: ["提示词岩浆", "聊天熔炉", "恰特鸡屁踢"],
-      background: "对话气泡与熔岩提示词",
-      backdrop: "chatgpt",
-    });
-    g.groundAll();
-    g.coinRow(8, 10, 3);
-    /*
-     * 火山不再夹进普通刺坑：每一个死亡面都是会发光的熔岩，
-     * 路线从低矮跳岛，逐步变成高低交错的岩柱。
-     */
-    g.lava(13, 4);
-    g.mesa(14, 14, 10);
-    g.coinArc(13, 9);
-    g.lava(20, 7);
-    g.mesa(22, 22, 9);
-    g.mesa(25, 25, 10);
-    g.coin(22, 8);
-    /* 短碎桥是节奏转换，踩过后迅速离开热浪。 */
-    g.lava(31, 4);
-    g.cr(31, 4, 11);
-    g.spring(39);
-    g.plat(38, 7, 3);
-    g.q(40, 6, 6);
-    g.coinRow(38, 6, 3);
-    /*
-     * 竖井是金蛋支线：主路可从右侧跨过三格熔岩；
-     * 想拿蛋则在两面岩壁之间连续蹬墙。
-     */
-    g.mesa(47, 47, 5);
-    g.mesa(51, 51, 3);
-    g.lava(48, 3);
-    g.plat(45, 8, 1);
-    g.egg(49, 8);
-    g.lava(57, 8);
-    g.mesa(59, 60, 10);
-    g.mesa(63, 63, 9);
-    g.coin(60, 9);
-    /* 岩柱下降后再上升，要求看准落点高度而非背刺位。 */
-    g.lava(68, 6);
-    g.mesa(70, 70, 10);
-    g.mesa(73, 73, 9);
-    g.lava(79, 4);
-    g.cr(79, 4, 11);
-    g.lava(87, 5);
-    g.mesa(89, 90, 10);
-    g.mesa(93, 93, 9);
-    /* K 过渡平地:落完跳岛后 99..106 一片开阔,缓口气再入 Boss */
-    /* 坪台 99..106 绝对干净,flag 106 */
-    g.flag(106);
-  });
+    /* —— 109..130 S4 岩浆跳岛:看见岩浆,先找下一座岛 —— */
+    g.lava(111, 3);
+    g.mesa(112, 112, 10);
+    g.coinArc(111, 9);
+    g.lava(117, 4);
+    g.mesa(118, 118, 9);
+    g.mesa(121, 121, 10);
+    g.coin(118, 7);
+    g.spring(126); /* 支线:一弹冲天拿奶箱 */
+    g.plat(125, 7, 3);
+    g.q(126, 6, 5);
+    g.lava(129, 2); /* 主路:2 格熔岩缝,小跳就过 */
 
-  /* ================= 世界5 · 文心失重塔:蹬墙刺井 ================= */
+    /* —— 131..138 存档点 3 —— */
+    g.save(135);
 
-  defLevel(118, "5-1 文心失重塔", 4, function (g) {
-    g.startX = 3;
-    g.setProfile("↟", "失重塔楼", "抬头找路 · 垂直攀升", "高处不是终点，下一层才是。", "tower", 4, {
-      provider: "百度 · 文心一言",
-      aliases: ["ERNIE 月梯", "百度不掉线", "文心失重塔"],
-      background: "书页卫星与月面数据塔",
-      backdrop: "ernie",
-    });
-    g.groundAll();
-    g.coinRow(8, 10, 3);
-    /*
-     * 基地是一座可读的“向上—落下—再向上”塔楼。地面始终是
-     * 练习回退线；正确路线在高台上，越敢抬头越容易发现下一层。
-     */
-    g.mesa(13, 15, 10);
-    g.mesa(19, 21, 8);
-    g.mesa(25, 27, 6);
-    g.plat(30, 6, 3);
-    g.q(31, 5, 1);
-    g.coinRow(25, 5, 3);
-    /* 第一座高塔顶端可以直接跳下，教学“高度不是死路”。 */
-    g.mesa(37, 39, 9);
-    g.mesa(43, 45, 6);
-    g.plat(48, 6, 3);
-    g.q(49, 5, 6);
-    /* 双塔之间的金蛋是可选蹬墙线，主路线从塔顶继续向右。 */
-    g.mesa(55, 55, 4);
-    g.mesa(60, 60, 3);
-    g.egg(57, 5);
-    g.plat(52, 7, 2);
-    g.coinRow(56, 8, 3);
-    /* 第二组阶梯比第一组更快，弹簧只负责把玩家送上观景台。 */
-    g.spring(66);
-    g.plat(65, 7, 4);
-    g.mesa(73, 75, 8);
-    g.mesa(79, 81, 6);
-    g.mesa(85, 87, 9);
-    g.coinRow(79, 5, 3);
-    /* 出塔后给出一段平地，准备面对守关老板。 */
-    g.mesa(94, 95, 10);
-    g.mesa(99, 100, 11);
-    /* 坪台 105..112 绝对干净,flag 112 */
-    g.flag(112);
-  });
+    /* —— 139..162 S5 双子摆渡:读平台轨迹,等它回来 —— */
+    g.spikePit(140, 151);
+    g.mplat(141, 11, 149, 11); /* 平渡 */
+    g.coinRow(144, 9, 3);
+    g.ground(152, 153);
+    g.spikePit(154, 163);
+    g.mplat(155, 11, 159, 8); /* 上行摆渡 */
+    g.coin(157, 8);
 
-  /* ================= 世界6 · 吉米你双子谷:移动平台才是真刺客 ================= */
+    /* —— 163..196 S6 窄板刺海:像素级的落点 —— */
+    g.save(166); /* 存档点 4(湖岸边) */
+    g.spikePit(169, 184);
+    g.plat(171, 11, 1);
+    g.plat(174, 10, 1);
+    g.plat(177, 11, 1);
+    g.plat(180, 10, 1); /* 4 块 40px 窄板,3 格间距高低交替 */
+    g.bigc(176, 7);
+    g.leopard(189); /* 豹的领土 185..194,东边台阶锁死 */
+    g.mesa(195, 196, 11);
 
-  defLevel(120, "6-1 吉米你双子谷", 5, function (g) {
-    g.startX = 3;
-    g.setProfile("↔", "双子摆渡", "等平台 · 看轨迹 · 两段接力", "平台会回来，贪快才会掉。", "move", 4, {
-      provider: "Google · Gemini",
-      aliases: ["双子上下文", "谷歌折返桥", "吉米你双子谷"],
-      background: "双月星云与双色数据流",
-      backdrop: "gemini",
-    });
-    g.groundAll();
-    g.coinRow(8, 10, 4);
-    /*
-     * 这里没有“顺手塞一排刺”的干扰项。四段沟壑只考一件事：
-     * 读出平台的往返轨迹，决定上第一块还是等下一轮。
-     */
-    g.spikePit(13, 23);
-    g.mplat(14, 11, 20, 11); /* 平渡 */
-    g.spikePit(28, 39);
-    g.mplat(29, 11, 35, 9); /* 上行 */
-    g.mplat(35, 8, 38, 8); /* 第二块接力台 */
-    g.coinRow(32, 7, 3);
-    /* 站台：允许玩家先观察下一段，不会被追兵催促。 */
-    g.mesa(43, 45, 10);
-    g.spikePit(49, 61);
-    g.mplat(50, 11, 56, 11);
-    g.mplat(56, 10, 60, 8);
-    g.egg(56, 7); /* 在两块摆渡板的交接线上 */
-    g.spikePit(66, 77);
-    g.mplat(67, 10, 72, 7);
-    g.mplat(72, 7, 76, 10);
-    g.q(74, 6, 5);
-    g.coinRow(70, 6, 4);
-    /* 最后一次摆渡在低处回程，故意和前面的上行节奏相反。 */
-    g.spikePit(82, 93);
-    g.mplat(83, 11, 90, 11);
-    g.mesa(97, 98, 10);
-    g.mesa(102, 103, 11);
-    /* 坪台 107..114 绝对干净,flag 114 */
-    g.flag(114);
-  });
+    /* —— 197..216 S7 GPT 老板守关:奶弹自动开火 —— */
+    g.save(200); /* 存档点 5(老板门前) */
+    g.mesa(203, 204, 10);
+    g.miniboss(209);
+    g.mesa(215, 216, 10);
 
-  /* ================= 世界7 · 抱抱脸游乐园:这里的地板都是骗子 ================= */
+    /* —— 217..229 最终喘息:存个档,别浪 —— */
+    g.save(220); /* 存档点 6(Dario 门前) */
+    g.spikeBelt(224, 225);
+    g.raven(227, 8); /* 禁跳鸦:低走进场 */
 
-  defLevel(116, "7-1 抱抱脸游乐园", 6, function (g) {
-    g.startX = 3;
-    g.setProfile("?", "骗子乐园", "假地板 · 倒计时 · 前冲", "它看起来像地面，不代表它是。", "crumble", 5, {
-      provider: "Hugging Face · 抱抱脸",
-      aliases: ["Hug 泡泡桥", "表情包陷阱", "抱抱脸乐园"],
-      background: "表情气球和倒计时彩带",
-      backdrop: "huggingface",
-    });
-    g.groundAll();
-    g.coinRow(8, 10, 4);
-    /*
-     * 乐园的规则只有一条：落脚点会开始倒计时。地面、桥面与
-     * 小舞台用同一种高度伪装，玩家需要通过节奏而不是背刺海。
-     */
-    g.pit(13, 19);
-    g.cr(13, 7, 12); /* 一眼像平地，停下来就掉 */
-    g.plat(16, 9, 2); /* 上层是给观察者的保险线 */
-    g.q(22, 8, 6);
-    g.solid(21, 9, 11);
-    g.solid(24, 9, 11);
-    g.brick(21, 8, 4);
-    /* 左半桥会塌、右半桥是真地；跳早了反而错过安全台。 */
-    g.pit(29, 37);
-    g.cr(29, 4, 12);
-    g.plat(33, 9, 3);
-    g.cr(36, 2, 12);
-    g.coinRow(31, 8, 4);
-    /* 两段小桥之间特意留一块平地，让失败原因清晰。 */
-    g.pit(43, 49);
-    g.cr(43, 6, 12);
-    g.mesa(52, 53, 10);
-    g.pit(57, 66);
-    g.cr(57, 4, 12);
-    g.plat(61, 9, 3);
-    g.cr(65, 2, 12);
-    g.egg(62, 7); /* 蛋在上层临时舞台，拿完仍要及时离开。 */
-    g.q(63, 8, 1);
-    /* 最后一桥加长，但前方有明确的真地面作终点。 */
-    g.pit(72, 80);
-    g.cr(72, 8, 12);
-    g.plat(75, 9, 2);
-    g.pit(86, 92);
-    g.cr(86, 6, 12);
-    g.mesa(95, 96, 10);
-    g.coinRow(87, 9, 4);
-    /* 坪台 103..110 绝对干净,flag 110 */
-    g.flag(110);
-  });
-
-  /* ================= 世界8 · 星火炼丹炉:毕业考 ================= */
-
-  defLevel(124, "8-1 星火炼丹炉", 7, function (g) {
-    g.startX = 3;
-    g.setProfile("≫", "炼丹冲刺", "速度线 · 节奏跳 · 终局路由", "别停，连续动作比单次跳得远。", "dash", 5, {
-      provider: "科大讯飞 · 星火",
-      aliases: ["讯飞烧显卡", "Token 火线", "星火炼丹炉"],
-      background: "Token 火雨和炼丹数据炉",
-      backdrop: "spark",
-    });
-    g.groundAll();
-    g.coinRow(7, 10, 5);
-    /*
-     * 毕业关不是前七关机关的拼盘，而是一条连续速度线：
-     * 低头穿刺檐、加速跨刺带、不断把落点接成下一次起跳。
-     */
-    g.ceil(13, 18);
-    g.coinRow(14, 11, 3);
-    g.spikeBelt(22, 24);
-    g.ceil(28, 33);
-    g.spikeBelt(37, 39);
-    /* 这座临时桥要求带着上一跳的速度穿过。 */
-    g.pit(44, 49);
-    g.cr(44, 6, 11);
-    g.spikeBelt(54, 56);
-    g.ceil(60, 65);
-    g.coinRow(61, 11, 3);
-    /* 中段短沟可冲刺直过，旁边高台是取蛋支线。 */
-    g.spikePit(69, 74);
-    g.plat(71, 11, 1);
-    g.mesa(77, 78, 10);
-    g.egg(78, 8);
-    g.spikeBelt(82, 84);
-    g.cannon(88); /* 炮弹用来打乱冲刺节拍，不挤占落点 */
-    g.ceil(93, 97);
-    g.spikeBelt(101, 103);
-    g.mesa(106, 107, 10);
-    g.coinRow(106, 9, 2);
-    /* 坪台 114..122 绝对干净,flag 119 */
-    g.flag(119);
-  });
-
-  /* ================= 终章 · 克劳德机房:紧凑竞技场决战 ================= */
-
-  defLevel(34, "终章 克劳德机房", 4, function (g) {
-    g.ground(0, 33);
-    g.startX = 3;
-    g.setProfile("✦", "机房决战", "预警闪避 · 自动开火 · 破盾", "红光出现时，先活下来。", "boss", 5, {
-      provider: "Anthropic · Claude",
-      aliases: ["人类学服务器", "克劳德云端", "机房大模型"],
-      background: "紫金服务器与纸页流光",
-      backdrop: "claude",
-    });
-    g.solid(0, 0, 14);
-    g.solid(33, 0, 14); /* 机房竞技场:紧凑围墙 */
-    g.plat(5, 9, 4);
-    g.plat(24, 9, 4);
-    g.plat(14, 5, 6);
-    g.coinRow(14, 3, 6);
-    g.q(17, 4, 5); /* 决战前的奶 */
-    g.egg(14, 4); /* 热身蛋 */
-    g.flagX = -1; /* 不设旗:打倒 Anthropic Dario 即通关 */
+    /* —— 230..263 S8 机房决战:Anthropic Dario —— */
+    /* 左墙带 3 格高门洞(9..11 行):进得去,老板出不来 */
+    g.solid(230, 0, 8);
+    g.solid(230, 12, 14);
+    g.ground(231, 262);
+    g.plat(235, 9, 4);
+    g.plat(254, 9, 4);
+    g.plat(244, 5, 6);
+    g.coinRow(244, 3, 6);
+    g.q(247, 4, 5); /* 决战前的奶 */
+    g.arena = { x0: 230, x1: 263 };
+    g.bossAt = 236;
   });
 
   return LEVELS;

@@ -1,29 +1,18 @@
 "use strict";
-/* ============ 牛来大冒险 3D · Ox is Coming ============
+/* ============ 牛来大冒险 3D · I Wanna Be The Ox ============
    引擎:Three.js(内嵌，无需安装，GitHub Pages 直接运行)
    主角:牛来 —— 按 1.png 建模(芥末黄杂毛/蓝弯角/灰紫厚唇/倦眼)
-   Boss:GPT 老板逐关守关 + 5-4 Anthropic Dario 最终决战
-   玩法:马里奥式物理 · 空中COMBO · 冲刺撞飞 · 选关
-====================================================== */
+   玩法:直接照抄 IWBTG 系列骨架 —— 一张连续大地图,即死陷阱,
+   存档点重生,死亡计数;终点 GPT 老板守关 + Anthropic Dario 决战
+============================================================ */
 var W = 960,
   H = 600,
   T = 40,
   S = 0.08,
   TAU = Math.PI * 2;
-var START_LIVES = 9;
 var FONT = '"ZCOOL KuaiLe","Microsoft YaHei",sans-serif';
-var VER = "v2.2.0";
+var VER = "v3.0.0";
 var GH = { x: -1, y: -1, w: 0, h: 0 }; /* 作者GitHub徽章热区 */
-var CLR = { x: -1, y: -1, w: 0, h: 0 }; /* 选关页"清空成绩"按钮热区 */
-var AI_UI = { x: -1, y: -1, w: 0, h: 0 }; /* AI 模式热区 */
-/* 选关页热区：大卡片 + 翻页箭头 + 可扩展关卡轨道。 */
-var SEL_UI = {
-  prev: { x: -1, y: -1, w: 0, h: 0 },
-  next: { x: -1, y: -1, w: 0, h: 0 },
-  start: { x: -1, y: -1, w: 0, h: 0 },
-  ai: { x: -1, y: -1, w: 0, h: 0 },
-  nodes: [],
-};
 function clamp(v, a, b) {
   return v < a ? a : v > b ? b : v;
 }
@@ -198,13 +187,6 @@ function sFirework() {
   if (!AC) return;
   noise(0.4, 0.2, 2200);
   tone(300, 0.3, "sawtooth", 0.1, 60);
-}
-function sFlag() {
-  if (!AC) return;
-  var t = AC.currentTime;
-  [523, 587, 659, 698, 784, 880, 1047, 1319].forEach(function (f, i) {
-    tone(f, 0.16, "square", 0.16, 0, t + i * 0.1);
-  });
 }
 function sMoo() {
   if (!AC) return;
@@ -520,16 +502,9 @@ window.addEventListener("keydown", function (e) {
     muted = !muted;
     return;
   }
-  if (e.code === "KeyI") {
-    /* AI 只接管可玩的关卡；选关页可先打开，再按开始观看路线演示。 */
-    if (GS.state === "select" || GS.state === "play" || GS.state === "bossintro") {
-      setAIMode(!AI.enabled);
-      e.preventDefault();
-    }
-    return;
-  }
   if (e.code === "KeyR" && (GS.state === "play" || GS.state === "pause")) {
-    loadLevel(GS.li, true);
+    /* R:回到最近的存档点重来(IWBTG 式随时自杀重试) */
+    loadLevel(GS.li, false);
     sClick();
     return;
   }
@@ -539,7 +514,7 @@ window.addEventListener("keydown", function (e) {
       sClick();
     } else if (GS.state === "pause") {
       if (e.code === "Escape") {
-        GS.state = "select";
+        GS.state = "title";
         makeSky();
         musicStop();
         sClick();
@@ -547,50 +522,20 @@ window.addEventListener("keydown", function (e) {
         GS.state = "play";
         sClick();
       }
-    } else if (GS.state === "select") {
-      GS.state = "title";
-      makeSky();
-      sClick();
     }
     return;
   }
   if (e.code === "Enter" || e.code === "Space") {
     if (GS.state === "title") {
-      GS.state = "select";
-      makeSky();
-      sClick();
+      startGame();
       e.preventDefault();
       return;
     }
-    if (GS.state === "select") {
-      if (isUnlocked(GS.selIdx)) {
-        startLevel(GS.selIdx);
-      } else {
-        sWarn();
-        addShake(3);
-        popText(W / 2, H / 2, "先通过上一关解锁!", "#ff8a8a");
-      }
-      e.preventDefault();
-      return;
-    }
-    if (GS.state === "gameover" || GS.state === "win") {
+    if (GS.state === "win") {
       GS.state = "title";
       makeSky();
       buildTitle3D();
       sClick();
-      return;
-    }
-  }
-  if (GS.state === "select") {
-    var mv = 0;
-    if (e.code === "ArrowLeft") mv = -1;
-    else if (e.code === "ArrowRight") mv = 1;
-    /* 大卡片选关：左右逐关，纵向按三关一组快速跳转。 */
-    else if (e.code === "ArrowUp") mv = -3;
-    else if (e.code === "ArrowDown") mv = 3;
-    if (mv) {
-      selectLevel(GS.selIdx + mv);
-      e.preventDefault();
       return;
     }
   }
@@ -702,9 +647,8 @@ function updateFX(dt) {
   if (GS.springSq > 0) GS.springSq = Math.max(0, GS.springSq - dt * 2.4);
 }
 
-/* ---------- 关卡配置（见 levels.js） ---------- */
+/* ---------- 关卡配置（见 levels.js:单一 IWBTG 式大地图） ---------- */
 var LEVELS = window.createNiuLaiLevels(TAU);
-var FINAL_LV = LEVELS.length - 1; /* 终章决战关(克劳德机房) */
 
 /* ============ 全局状态 ============ */
 var GS = {
@@ -712,8 +656,6 @@ var GS = {
   li: 0,
   score: 0,
   coins: 0,
-  lives: START_LIVES,
-  time: 300,
   hs: 0,
   levelIntro: 0,
   bossActive: false,
@@ -721,37 +663,44 @@ var GS = {
   winT: 0,
   combo: 0,
   bestCombo: 0,
-  perfect: false,
-  selIdx: 0,
   springSq: 0,
   sCoin: 0,
   sKill: 0,
   sBonus: 0,
   checkpointX: 0,
   checkpointLevel: -1,
+  deaths: 0 /* 本次挑战死亡数 */,
+  deathsAll: 0 /* 累计死亡数(持久化,IWBTG 式死亡计数) */,
 };
 var GT = 0;
-/* v1.8 解锁体系:通关 G 解锁 G+1;迁移时清除老版本分数存档 */
-function isCleared(i) {
+try {
+  GS.deathsAll = parseInt(localStorage.getItem("niu_deaths") || "0", 10) || 0;
+} catch (e) {}
+function addDeath() {
+  GS.deaths++;
+  GS.deathsAll++;
   try {
-    var s = localStorage.getItem("niu_clear") || "";
-    return s.length > i && s.charCodeAt(i) === 49;
-  } catch (e) {
-    return false;
+    localStorage.setItem("niu_deaths", "" + GS.deathsAll);
+  } catch (e) {}
+}
+try {
+  if (localStorage.getItem("niu_ver") !== "3") {
+    /* 大改版:清掉旧的多关成绩存档,重新计数 */
+    for (var _mi = 0; _mi < 64; _mi++) localStorage.removeItem("niu_best_lv" + _mi);
+    localStorage.removeItem("niu_best");
+    localStorage.removeItem("niu_clear");
+    localStorage.removeItem("niu_eggs");
+    localStorage.removeItem("niu_eggs_full");
+    localStorage.removeItem("niu_deaths");
+    localStorage.setItem("niu_ver", "3");
   }
-}
-function isUnlocked(i) {
-  /* v1.10:全关卡开放,任意跳关游玩(通关标记保留用于 ✓ 显示) */
-  return true;
-}
-function selectLevel(i) {
-  if (!LEVELS.length) return;
-  GS.selIdx = ((i % LEVELS.length) + LEVELS.length) % LEVELS.length;
-  sClick();
-}
+} catch (e) {}
+try {
+  GS.hs = parseInt(localStorage.getItem("niu_best") || "0", 10) || 0;
+} catch (e) {}
 /*
- * 选关、标题和结算页不需要占用手机拇指区。只在真正可以操控角色的
- * 两种状态显示按键，竖屏时不会再有浮层盖住选关卡片。
+ * 标题和结算页不需要占用手机拇指区。只在真正可以操控角色的
+ * 两种状态显示按键，竖屏时不会再有浮层盖住画面。
  */
 function syncTouchControls() {
   if (!touchUI) return;
@@ -760,668 +709,10 @@ function syncTouchControls() {
   touchControlsVisible = active;
   touchUI.classList.toggle("is-active", active);
 }
-
-/*
- * AI 路线
- * ------
- * 每帧读前方地形，辨认刺 / 岩浆 / 碎板 / 高台 / 移动平台，
- * 再用和玩家完全一样的 keys + 物理 + 碰撞去跑、等、跳、蹬墙。
- * 没有无敌，没有虚拟地板；踩刺会真死，再从检查点重试。
- */
-var AI = {
-  enabled: false,
-  lives: 28,
-  jumpT: 0,
-  jumpCd: 0,
-  dodgeT: 0,
-  stallT: 0,
-  lastX: 0,
-  landingX: 0,
-  landingY: 0,
-  landingLeft: 0,
-  landingRight: 0,
-  aimX: 0,
-  aimY: 0,
-  retries: 0,
-  status: "待命",
-  detail: "",
-  bossDir: -1,
-};
-function aiReleaseKeys() {
-  keys.left = false;
-  keys.right = false;
-  keys.run = false;
-  keys.jump = false;
-  justPressed.jump = false;
-  justPressed.pound = false;
-}
-function aiResetForLevel(fresh) {
-  if (!AI.enabled) return;
-  AI.jumpT = 0;
-  AI.jumpCd = 0;
-  AI.dodgeT = 0;
-  AI.stallT = 0;
-  AI.lastX = PL.x;
-  AI.landingX = 0;
-  AI.landingY = 0;
-  AI.landingLeft = 0;
-  AI.landingRight = 0;
-  AI.aimX = 0;
-  AI.aimY = 0;
-  AI.bossDir = -1;
-  AI.retries = fresh ? 0 : AI.retries + 1;
-  AI.status = fresh ? "扫描地形" : "重试 " + AI.retries;
-  AI.detail = "";
-}
-function setAIMode(enabled) {
-  enabled = !!enabled;
-  if (AI.enabled === enabled) return;
-  AI.enabled = enabled;
-  aiReleaseKeys();
-  if (enabled) {
-    AI.status = "已就绪";
-    if (GS.state === "play" || GS.state === "bossintro") {
-      GS.lives = Math.max(GS.lives, AI.lives);
-      aiResetForLevel(true);
-      popText(PL.x + 14, PL.y - 62, "AI 接管：读障碍起跳", "#8ad4ff");
-    } else {
-      popText(W / 2, H / 2 - 80, "AI 已就绪：会跳，也会死", "#8ad4ff");
-    }
-  } else {
-    AI.status = "手动操控";
-    AI.detail = "";
-    AI.aimX = 0;
-    AI.aimY = 0;
-    popText(PL.x + 14, PL.y - 52, "已切回手动操控", "#fff");
-  }
-  sClick();
-}
-function aiFloorTile(c) {
-  return solid(c) || c === 9 || c === 12 || c === 16;
-}
-function aiHazardTile(c) {
-  return c === 10 || c === 11;
-}
-function aiColumn(tx) {
-  if (!curLV || tx < 0 || tx >= curLV.w) return { surface: null, ceiling: false };
-  var ceiling = false;
-  var surface = null;
-  for (var ty = 0; ty < curLV.h; ty++) {
-    var c = tileAt(tx, ty);
-    if (c === 10 && ty <= 10) {
-      var below = tileAt(tx, ty + 1);
-      if (!solid(below) && below !== 9 && below !== 16 && below !== 10 && below !== 11) {
-        ceiling = true;
-        continue;
-      }
-    }
-    if (solid(c) && ty <= 10) {
-      var gapUnder = false;
-      for (var gy = ty + 1; gy <= ty + 2 && gy < curLV.h; gy++) {
-        var gc = tileAt(tx, gy);
-        if (gc === 0) {
-          gapUnder = true;
-          break;
-        }
-        if (aiHazardTile(gc) || gc === 9 || gc === 16 || gc === 12) break;
-      }
-      if (gapUnder) continue;
-    }
-    if (aiHazardTile(c) || aiFloorTile(c)) {
-      surface = { tx: tx, row: ty, tile: c, hazard: aiHazardTile(c) };
-      break;
-    }
-  }
-  return { surface: surface, ceiling: ceiling };
-}
-function aiSurfaceAt(tx) {
-  return aiColumn(tx).surface;
-}
-function aiLandingOK(s) {
-  if (!s || s.hazard) return false;
-  for (var ty = Math.max(0, s.row - 1); ty >= Math.max(0, s.row - 2); ty--) {
-    var c = tileAt(s.tx, ty);
-    if (solid(c) || aiHazardTile(c)) return false;
-  }
-  return true;
-}
-function aiFindSafeLanding(fromTx, distance) {
-  for (var tx = fromTx; tx <= fromTx + distance; tx++) {
-    var s = aiSurfaceAt(tx);
-    if (aiLandingOK(s)) return s;
-  }
-  return null;
-}
-function aiSpan(s) {
-  if (!s) return { left: 0, right: 0 };
-  var left = s.tx;
-  var right = s.tx;
-  while (left > s.tx - 4) {
-    var ls = aiSurfaceAt(left - 1);
-    if (!aiLandingOK(ls) || ls.row !== s.row) break;
-    left--;
-  }
-  while (right < s.tx + 4) {
-    var rs = aiSurfaceAt(right + 1);
-    if (!aiLandingOK(rs) || rs.row !== s.row) break;
-    right++;
-  }
-  return { left: left, right: right };
-}
-function aiLandingX(s) {
-  if (!s) return 0;
-  var span = aiSpan(s);
-  return ((span.left + span.right + 1) * T) / 2;
-}
-function aiLandingY(s) {
-  return s ? s.row * T : 12 * T;
-}
-function aiIsNarrow(s) {
-  if (!s || !aiLandingOK(s)) return false;
-  var span = aiSpan(s);
-  return span.right - span.left <= 0;
-}
-function aiWallAhead(col, feetRow) {
-  var headRow = Math.max(0, Math.floor(PL.y / T));
-  for (var d = 1; d <= 4; d++) {
-    for (var ty = headRow; ty < feetRow; ty++) {
-      if (solid(tileAt(col + d, ty))) return { distance: d, row: ty, tx: col + d };
-    }
-  }
-  return null;
-}
-function aiWallTop(tx, feetRow) {
-  for (var ty = 0; ty < feetRow; ty++) {
-    var c = tileAt(tx, ty);
-    if (solid(c) || c === 9) return { tx: tx, row: ty, tile: c, hazard: false };
-  }
-  return null;
-}
-function aiCeilingAhead(col) {
-  return aiColumn(col).ceiling || aiColumn(col + 1).ceiling || aiColumn(col + 2).ceiling;
-}
-function aiReadTerrain() {
-  var px = PL.x + PL.w / 2;
-  var col = Math.floor(px / T);
-  var feetRow = Math.floor((PL.y + PL.h + 2) / T);
-  var here = aiColumn(col);
-  var current = here.surface || { tx: col, row: feetRow, tile: 1, hazard: false };
-  var wall = aiWallAhead(col, feetRow);
-  var firstRisk = null;
-  var target = null;
-  var ceiling = here.ceiling;
-  for (var d = 1; d <= 16; d++) {
-    var info = aiColumn(col + d);
-    if (info.ceiling) ceiling = true;
-    var s = info.surface;
-    var risky = !s || s.hazard;
-    if (!firstRisk && risky) {
-      firstRisk = {
-        distance: d,
-        surface: s,
-        kind: !s ? "断层" : s.tile === 11 ? "岩浆" : "尖刺",
-      };
-    }
-    if (firstRisk && aiLandingOK(s) && s.row <= current.row + 4) {
-      target = s;
-      break;
-    }
-    if (!firstRisk && s && s.tile === 12) {
-      firstRisk = { distance: d, surface: s, kind: "弹簧" };
-      target = s;
-      break;
-    }
-    if (!firstRisk && s && !s.hazard && s.row < current.row && s.row >= current.row - 3) {
-      firstRisk = { distance: d, surface: s, kind: "高台" };
-      target = aiLandingOK(s) ? s : null;
-      break;
-    }
-  }
-  var wallTop = wall ? aiWallTop(wall.tx, feetRow) : null;
-  if (wall && (!wallTop || wallTop.row < feetRow - 3)) wall = null;
-  if (wall && (!firstRisk || wall.distance <= firstRisk.distance)) {
-    return {
-      col: col,
-      feetRow: feetRow,
-      ceiling: ceiling,
-      current: current,
-      kind: "高台",
-      distance: wall.distance,
-      target: aiLandingOK(wallTop) ? wallTop : null,
-      narrow: aiIsNarrow(current),
-    };
-  }
-  if (firstRisk) {
-    return {
-      col: col,
-      feetRow: feetRow,
-      ceiling: ceiling,
-      current: current,
-      kind: firstRisk.kind,
-      distance: firstRisk.distance,
-      target: target,
-      narrow: aiIsNarrow(current),
-    };
-  }
-  return {
-    col: col,
-    feetRow: feetRow,
-    ceiling: ceiling,
-    current: current,
-    kind: "平路",
-    distance: 99,
-    target: null,
-    narrow: aiIsNarrow(current),
-  };
-}
-function aiMovingBridgeAhead(px) {
-  var best = null;
-  for (var i = 0; i < ents.length; i++) {
-    var e = ents[i];
-    if (e.k !== "move" || e.x + e.w < px - T || e.x > px + 16 * T) continue;
-    if (!best || e.x < best.x) best = e;
-  }
-  return best;
-}
-function aiLiveMiniBoss() {
-  for (var i = 0; i < ents.length; i++) {
-    var e = ents[i];
-    if (e.k === "miniboss" && !e.dead && !e.gone) return e;
-  }
-  return null;
-}
-function aiNearbyThreat(px) {
-  for (var i = 0; i < ents.length; i++) {
-    var e = ents[i];
-    if (e.dead || e.gone || e.k === "move" || e.k === "bird" || e.k === "cannon" || e.k === "miniboss") continue;
-    var ex = e.x + e.w / 2;
-    if (ex > px + 6 && ex < px + 110 && Math.abs(e.y + e.h - (PL.y + PL.h)) < 86) return e;
-  }
-  return null;
-}
-function aiRavenOverhead(px) {
-  for (var i = 0; i < ents.length; i++) {
-    var e = ents[i];
-    if (e.dead || e.gone || (e.k !== "raven" && e.k !== "bird")) continue;
-    var ex = e.x + e.w / 2;
-    if (Math.abs(ex - px) < 88 && e.y < PL.y + 8 && e.y > PL.y - 150) return true;
-  }
-  return false;
-}
-function aiFireNearby(px) {
-  for (var i = 0; i < fires.length; i++) {
-    var f = fires[i];
-    var toward = (f.vx > 0 && f.x < px + 40) || (f.vx < 0 && f.x > px - 40);
-    if (toward && Math.abs(f.x - px) < 130 && Math.abs(f.y - (PL.y + PL.h / 2)) < 78) return true;
-  }
-  return false;
-}
-function aiOnCrumble() {
-  var tx0 = Math.floor((PL.x + 6) / T);
-  var tx1 = Math.floor((PL.x + PL.w - 6) / T);
-  var ty = Math.floor((PL.y + PL.h + 2) / T);
-  for (var tx = tx0; tx <= tx1; tx++) {
-    if (tileAt(tx, ty) === 16) {
-      var cr = crumbles[tx + "," + ty];
-      return { tx: tx, ty: ty, left: cr ? cr.t : 0.75 };
-    }
-  }
-  return null;
-}
-function aiSpringHere(col) {
-  for (var d = 0; d <= 1; d++) {
-    if (tileAt(col + d, 12) === 12) return true;
-    var s = aiSurfaceAt(col + d);
-    if (s && s.tile === 12) return true;
-  }
-  return false;
-}
-function aiSetAim(target) {
-  if (!target) {
-    AI.aimX = 0;
-    AI.aimY = 0;
-    return;
-  }
-  AI.aimX = aiLandingX(target);
-  AI.aimY = aiLandingY(target);
-}
-function aiStartJump(hold, target) {
-  if (AI.jumpCd > 0) return false;
-  if (!PL.ground && PL.coyote <= 0) return false;
-  AI.jumpT = clamp(hold || 0.28, 0.14, 0.58);
-  AI.jumpCd = 0.07;
-  var span = target ? aiSpan(target) : null;
-  AI.landingX = aiLandingX(target);
-  AI.landingY = aiLandingY(target);
-  AI.landingLeft = span ? span.left * T : 0;
-  AI.landingRight = span ? (span.right + 1) * T : 0;
-  aiSetAim(target);
-  keys.jump = true;
-  justPressed.jump = true;
-  return true;
-}
-function aiStartWallJump() {
-  if (PL.ground || AI.jumpCd > 0 || (!PL.hitL && !PL.hitR)) return false;
-  AI.jumpT = 0.34;
-  AI.jumpCd = 0.12;
-  AI.landingX = 0;
-  AI.landingY = 0;
-  AI.landingLeft = 0;
-  AI.landingRight = 0;
-  keys.left = !!PL.hitL;
-  keys.right = !!PL.hitR;
-  keys.jump = true;
-  justPressed.jump = true;
-  return true;
-}
-function aiJumpHoldFor(terrain) {
-  var dist = terrain.target ? terrain.target.tx - terrain.col : terrain.distance + 2;
-  var rise = terrain.target ? Math.max(0, terrain.feetRow - terrain.target.row) : 0;
-  if (terrain.kind === "高台") {
-    if (dist <= 2) return clamp(0.16 + rise * 0.045, 0.16, 0.38);
-    return clamp(0.3 + rise * 0.07, 0.3, 0.56);
-  }
-  if (dist <= 3 && rise <= 1) return 0.15 + rise * 0.04;
-  if (dist <= 5) return 0.3 + rise * 0.05;
-  return clamp(0.36 + (dist - 5) * 0.035 + rise * 0.05, 0.36, 0.56);
-}
-function aiControlMovingBridge(terrain, px) {
-  var bridge = aiMovingBridgeAhead(px);
-  if (!bridge) return false;
-  var onBridge = PL._onPlat === bridge;
-  if (onBridge) {
-    var exit = aiFindSafeLanding(Math.floor((bridge.x + bridge.w) / T) + 1, 10);
-    keys.right = true;
-    keys.left = false;
-    aiSetAim(exit);
-    if (exit && bridge.x + bridge.w > exit.tx * T - T * 2 && (PL.ground || PL.coyote > 0)) {
-      aiStartJump(0.46, exit);
-      AI.status = "摆渡起跳";
-    } else AI.status = "跟着平台走";
-    return true;
-  }
-  var center = bridge.x + bridge.w / 2;
-  var edge = (terrain.col + Math.max(1, terrain.distance)) * T;
-  if (px < edge - 28) {
-    keys.right = true;
-    AI.status = "靠近沟沿";
-    return true;
-  }
-  keys.right = false;
-  keys.left = PL.vx > 50;
-  if ((PL.ground || PL.coyote > 0) && Math.abs(center - px) < 2.3 * T) {
-    aiStartJump(0.38, { tx: Math.floor(center / T), row: Math.floor(bridge.y / T), tile: 9, hazard: false });
-    AI.status = "跳上移动平台";
-    return true;
-  }
-  AI.status = "等平台回来";
-  AI.status = "跳上移动平台";
-  return true;
-}
-function aiControlMiniBoss(b, px) {
-  var dx = b.x + b.w / 2 - px;
-  keys.run = true;
-  if (dx > 260) {
-    keys.right = true;
-    keys.left = false;
-    AI.status = "接近守关 Boss";
-  } else if (dx < 170) {
-    keys.left = true;
-    keys.right = false;
-    AI.status = "拉开距离开火";
-  } else {
-    keys.left = false;
-    keys.right = false;
-    AI.status = "锁定守关 Boss";
-  }
-  if (aiFireNearby(px) && !aiCeilingAhead(Math.floor(px / T))) {
-    aiStartJump(0.24);
-  }
-}
-function aiControlFinalBoss(px) {
-  var b = GS.boss;
-  if (!b) {
-    keys.right = true;
-    keys.run = true;
-    AI.status = "前往机房核心";
-    return;
-  }
-  keys.run = true;
-  if (px <= 3 * T) AI.bossDir = 1;
-  else if (px >= 29 * T) AI.bossDir = -1;
-  keys.left = AI.bossDir < 0;
-  keys.right = AI.bossDir > 0;
-  var mustJump =
-    (b.state === "beam" && b.beamRow === 10) ||
-    b.state === "dash" ||
-    b.state === "fire" ||
-    b.state === "slamJump" ||
-    aiFireNearby(px);
-  if (mustJump && !aiCeilingAhead(Math.floor(px / T))) {
-    aiStartJump(0.3);
-  }
-  AI.status = b.state === "recover" || b.state === "stun" ? "Boss 破防：输出" : "跳躲 " + (b.next || b.state);
-}
-function updateAIMode(dt) {
-  if (!AI.enabled || GS.state !== "play") return;
-  AI.jumpCd = Math.max(0, AI.jumpCd - dt);
-  AI.jumpT = Math.max(0, AI.jumpT - dt);
-  keys.left = false;
-  keys.right = false;
-  keys.run = true;
-  keys.jump = AI.jumpT > 0;
-  var px = PL.x + PL.w / 2;
-  if (GS.boss) {
-    aiControlFinalBoss(px);
-    return;
-  }
-  var terrain = aiReadTerrain();
-  if (!PL.ground && (PL.hitL || PL.hitR)) {
-    var wallTx = PL.hitR ? Math.floor((PL.x + PL.w + 2) / T) : Math.floor((PL.x - 2) / T);
-    var climb = 0;
-    for (var wy = 0; wy < 13; wy++) if (solid(tileAt(wallTx, wy))) climb++;
-    var forwardLand = terrain.target && terrain.target.tx - terrain.col <= 7;
-    if (climb >= 3 && !forwardLand && aiStartWallJump()) {
-      AI.status = "蹬墙";
-      return;
-    }
-  }
-  var mini = aiLiveMiniBoss();
-  if (
-    mini &&
-    mini.x - px < 8 * T &&
-    terrain.kind === "平路" &&
-    !terrain.ceiling &&
-    Math.abs(PL.y + PL.h - (mini.y + mini.h)) < 70
-  ) {
-    aiControlMiniBoss(mini, px);
-    return;
-  }
-  var foe = aiNearbyThreat(px);
-  var crumble = aiOnCrumble();
-  keys.right = true;
-  if (terrain.target) aiSetAim(terrain.target);
-  else if (terrain.kind === "平路") {
-    AI.aimX = 0;
-    AI.aimY = 0;
-  }
-  if (
-    (terrain.kind === "断层" || terrain.kind === "尖刺" || terrain.kind === "岩浆") &&
-    (!terrain.target || terrain.target.tx - terrain.col > 8)
-  ) {
-    if (aiControlMovingBridge(terrain, px)) return;
-  }
-  if (!PL.ground) {
-    if (AI.landingX && AI.landingLeft) {
-      if (px >= AI.landingLeft) {
-        AI.jumpT = 0;
-        keys.jump = false;
-      }
-      if (px < AI.landingLeft - 4) {
-        keys.right = true;
-        keys.left = false;
-        keys.run = true;
-      } else if (px > AI.landingRight - 4) {
-        keys.left = true;
-        keys.right = false;
-        keys.run = false;
-      } else {
-        keys.run = false;
-        keys.right = px < AI.landingX - 6 && PL.vx < 80;
-        keys.left = PL.vx > 50;
-      }
-    }
-    AI.stallT = 0;
-    AI.lastX = Math.max(AI.lastX, PL.x);
-    return;
-  }
-  if (AI.landingX && AI.landingLeft && px >= AI.landingLeft && px <= AI.landingRight) {
-    AI.landingX = 0;
-    AI.landingY = 0;
-    AI.landingLeft = 0;
-    AI.landingRight = 0;
-  }
-  if (aiSpringHere(terrain.col)) {
-    keys.jump = true;
-    justPressed.jump = true;
-    AI.jumpT = 0.55;
-    AI.status = "借弹簧";
-    return;
-  }
-  if (crumble) {
-    keys.run = true;
-    keys.right = true;
-    if (crumble.left < 0.28) {
-      aiStartJump(0.4, terrain.target || aiFindSafeLanding(terrain.col + 1, 8));
-      AI.status = "碎板将塌：跳走";
-    } else AI.status = "冲过碎板";
-    return;
-  }
-  if (terrain.ceiling && (terrain.kind === "平路" || terrain.kind === "尖刺" || terrain.kind === "岩浆")) {
-    var floorHazard = terrain.kind !== "平路" && terrain.distance <= 1 && terrain.current && terrain.current.hazard;
-    if (!floorHazard) {
-      keys.jump = false;
-      AI.jumpT = 0;
-      AI.status = "低头过顶刺";
-      if (aiFireNearby(px)) keys.right = false;
-      return;
-    }
-  }
-  if (aiRavenOverhead(px) && terrain.kind === "平路") {
-    keys.jump = false;
-    AI.status = "鸦下低走";
-    return;
-  }
-  if (aiFireNearby(px)) {
-    if (terrain.ceiling) {
-      keys.right = false;
-      AI.status = "等炮弹";
-      return;
-    }
-    aiStartJump(0.28, terrain.target);
-    AI.status = "跳过炮弹";
-    return;
-  }
-  if (foe && !terrain.ceiling) {
-    aiStartJump(0.28);
-    AI.status = "踩怪";
-    return;
-  }
-  var dropping =
-    terrain.target && terrain.current && terrain.target.row > terrain.current.row && terrain.kind === "断层";
-  var mustJump = terrain.kind !== "平路" && terrain.kind !== "弹簧" && !dropping;
-  var span = terrain.target ? terrain.target.tx - terrain.col : terrain.distance + 3;
-  var trigger = span >= 4 ? 2 : 1;
-  if (terrain.kind === "高台") trigger = Math.max(trigger, 2);
-  var lastSafe = terrain.distance <= trigger;
-  if (terrain.narrow && mustJump) lastSafe = true;
-  if (mustJump && lastSafe && !terrain.ceiling) {
-    if (terrain.target && aiIsNarrow(terrain.target) && span <= 4) keys.run = false;
-    aiStartJump(aiJumpHoldFor(terrain), terrain.target);
-    AI.status = "跳过" + terrain.kind;
-    return;
-  }
-  if (terrain.kind === "弹簧" && terrain.distance <= 1) {
-    keys.jump = true;
-    AI.jumpT = 0.55;
-    AI.status = "踏上弹簧";
-    return;
-  }
-  if (terrain.narrow && mustJump && AI.jumpCd > 0) {
-    keys.right = false;
-    AI.status = "板上等跳";
-    return;
-  }
-  AI.status = terrain.ceiling ? "低头前行" : mustJump ? "助跑起跳" : "向前扫障碍";
-  if (PL.x < AI.lastX + 2) AI.stallT += dt;
-  else {
-    AI.lastX = PL.x;
-    AI.stallT = 0;
-  }
-  if (AI.stallT > 0.55 && !terrain.ceiling) {
-    aiStartJump(0.36, terrain.target);
-    AI.stallT = 0;
-    AI.status = "卡住了：再跳";
-  }
-}
-function markCleared(i) {
-  try {
-    var s = (localStorage.getItem("niu_clear") || "").padEnd(64, "0");
-    if (s.charCodeAt(i) === 49) return;
-    s = s.slice(0, i) + "1" + s.slice(i + 1);
-    localStorage.setItem("niu_clear", s);
-  } catch (e) {}
-}
-/* v1.9 金蛋收集:每关藏 1 颗,捡齐 20 颗拿大满贯 */
-function isEggGot(i) {
-  try {
-    var s = localStorage.getItem("niu_eggs") || "";
-    return s.length > i && s.charCodeAt(i) === 49;
-  } catch (e) {
-    return false;
-  }
-}
-function markEgg(i) {
-  try {
-    var s = (localStorage.getItem("niu_eggs") || "").padEnd(64, "0");
-    if (s.charCodeAt(i) === 49) return false;
-    s = s.slice(0, i) + "1" + s.slice(i + 1);
-    localStorage.setItem("niu_eggs", s);
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-function eggCount() {
-  var n = 0;
-  try {
-    var s = localStorage.getItem("niu_eggs") || "";
-    for (var i = 0; i < s.length; i++) if (s.charCodeAt(i) === 49) n++;
-  } catch (e) {}
-  return n;
-}
-function eggFullBadge() {
-  try {
-    return !!localStorage.getItem("niu_eggs_full") && eggCount() >= LEVELS.length;
-  } catch (e) {
-    return false;
-  }
-}
-try {
-  if (localStorage.getItem("niu_ver") !== "2") {
-    for (var _mi = 0; _mi < 64; _mi++) localStorage.removeItem("niu_best_lv" + _mi);
-    localStorage.removeItem("niu_best");
-    localStorage.removeItem("niu_clear");
-    localStorage.setItem("niu_ver", "2");
-  }
-} catch (e) {}
-try {
-  GS.hs = parseInt(localStorage.getItem("niu_best") || "0", 10) || 0;
-} catch (e) {}
 var curLV = null,
   tiles = null,
   coinsEnt = [],
-  eggsEnt = [],
+  savesEnt = [],
   ents = [],
   itms = [],
   bumps = [],
@@ -1553,7 +844,7 @@ function loadLevel(i, fresh) {
   curLV = LEVELS[i];
   tiles = curLV.T.slice(0);
   coinsEnt = [];
-  eggsEnt = [];
+  savesEnt = [];
   ents = [];
   itms = [];
   bumps = [];
@@ -1562,15 +853,15 @@ function loadLevel(i, fresh) {
   crumbles = {};
   serverSmokeClock = 0;
   GS.combo = 0;
-  GS.perfect = false;
   var j;
   for (j = 0; j < curLV.coins.length; j++) {
     var c = curLV.coins[j];
     coinsEnt.push({ x: c.x * T + T / 2, y: c.y * T + T / 2, t: c.t, taken: false, big: !!c.big });
   }
-  for (j = 0; j < (curLV.eggs ? curLV.eggs.length : 0); j++) {
-    var eg = curLV.eggs[j];
-    eggsEnt.push({ x: eg.x * T + T / 2, y: eg.y * T + T / 2, t: eg.t, taken: false });
+  /* IWBTG 存档点:已越过的存档显示为激活色,死亡回到最后一个 */
+  for (j = 0; j < curLV.saves.length; j++) {
+    var sv = curLV.saves[j];
+    savesEnt.push({ x: sv.x * T + T / 2, y: sv.y * T + T / 2, taken: false });
   }
   for (j = 0; j < curLV.ents.length; j++) {
     var e = curLV.ents[j];
@@ -1607,20 +898,6 @@ function loadLevel(i, fresh) {
         baseY: e.y * T,
       });
   }
-  /* Every flag level has one GPT 老板 guarding the finish behind a gate. */
-  GS.gateTiles = [];
-  GS.gateOpen = false;
-  if (curLV.flagX > 0) {
-    for (var gty = 5; gty <= 11; gty++) {
-      if (curLV.get(curLV.flagX - 2, gty) === 17) GS.gateTiles.push({ x: curLV.flagX - 2, y: gty });
-    }
-    /* 旗子先藏起来:击败守关老板才升起 */
-    GS.flagUp = false;
-    for (var fy2 = 8; fy2 <= 11; fy2++) {
-      if (tiles[fy2 * curLV.w + curLV.flagX] === 15) tiles[fy2 * curLV.w + curLV.flagX] = 0;
-    }
-    spawnMiniBoss(curLV.flagX - 10);
-  }
   PL.big = fresh ? PL.big : false;
   PL.h = PL.big ? 50 : 36;
   /* 按碰撞高度保持脚底在原有安全出生基线。 */
@@ -1640,15 +917,13 @@ function loadLevel(i, fresh) {
   }
   GS.state = "play";
   GS.levelIntro = 2.0;
-  GS.time = 300;
   GS.bossActive = false;
   GS.boss = null;
   camX = clamp(PL.x - W * 0.4, 0, curLV.w * T - W);
   musicStart(curLV.theme % PATS.length);
   if (typeof makeSky === "function") makeSky();
   buildWorld3D();
-  aiResetForLevel(fresh);
-  popText(PL.x + 14, PL.y - 40, curLV.name, "#ffe08a");
+  popText(PL.x + 14, PL.y - 40, fresh ? curLV.name : "从存档点继续!", "#ffe08a");
 }
 function startGame() {
   initAU();
@@ -1658,26 +933,11 @@ function startGame() {
   GS.sCoin = 0;
   GS.sKill = 0;
   GS.sBonus = 0;
-  GS.lives = START_LIVES;
-  if (AI.enabled) GS.lives = Math.max(GS.lives, AI.lives);
+  GS.deaths = 0;
+  GS.bestCombo = 0;
   PL.big = false;
   PL.inv = 0;
   loadLevel(0, true);
-  sClick();
-}
-function startLevel(i) {
-  initAU();
-  if (AC && AC.state === "suspended") AC.resume();
-  GS.score = 0;
-  GS.coins = 0;
-  GS.sCoin = 0;
-  GS.sKill = 0;
-  GS.sBonus = 0;
-  GS.lives = START_LIVES;
-  if (AI.enabled) GS.lives = Math.max(GS.lives, AI.lives);
-  PL.big = false;
-  PL.inv = 0;
-  loadLevel(i, true);
   sClick();
 }
 
@@ -1702,8 +962,7 @@ function die() {
   var _fx = Math.floor((PL.x + PL.w / 2) / T),
     _fy = Math.floor((PL.y + PL.h - 1) / T);
   var _cause = "enemy";
-  if (GS.time <= 0) _cause = "timeout";
-  else if (PL.y > H - 60) _cause = "fall";
+  if (PL.y > H - 60) _cause = "fall";
   else {
     var _tc = tileAt(_fx, _fy);
     if (_tc === 10) _cause = "spike";
@@ -1716,8 +975,8 @@ function die() {
     tile: _tc,
     cause: _cause,
     li: GS.li,
-    t: Math.round(GS.time),
   };
+  addDeath(); /* IWBTG 死亡计数:死了就 +1,没有生命上限 */
   PL.dead = true;
   PL.vy = -720;
   sDie();
@@ -1727,10 +986,9 @@ function die() {
 }
 function rewardComboMilestone(x, y) {
   if (GS.combo === 3) {
-    GS.time += 3;
     GS.score += 300;
     GS.sBonus += 300;
-    popText(x, y, "COMBO 奖励 +3秒!", "#ffd43f");
+    popText(x, y, "COMBO 奖励 +300!", "#ffd43f");
   } else if (GS.combo === 5) {
     PL.star = Math.max(PL.star, 4);
     GS.score += 1000;
@@ -1738,10 +996,9 @@ function rewardComboMilestone(x, y) {
     popText(x, y, "狂牛无敌 4秒! +1000", "#ff5a5a");
     sStarGet();
   } else if (GS.combo === 8) {
-    GS.lives++;
-    GS.score += 2000;
-    GS.sBonus += 2000;
-    popText(x, y, "无敌牛王! +1命 +2000", "#5ad4ff");
+    GS.score += 3000;
+    GS.sBonus += 3000;
+    popText(x, y, "无敌牛王! +3000", "#5ad4ff");
     sOneUp();
   }
 }
@@ -1797,7 +1054,7 @@ function collectCoin(c, fromBlock) {
     burst(c.x, c.y, "spark", 16, 300);
     popText(c.x, c.y - 8, "大金币 +500", "#ffd23f");
     if (GS.coins % 100 === 0) {
-      GS.lives++;
+      GS.score += 1000;
       sOneUp();
     }
     return;
@@ -1805,39 +1062,34 @@ function collectCoin(c, fromBlock) {
   GS.score += 100;
   GS.sCoin += 100;
   if (GS.coins % 100 === 0) {
-    GS.lives++;
+    GS.score += 1000;
     sOneUp();
-    popText(PL.x + 14, PL.y - 30, "+1 命!", "#7fff7f");
+    popText(PL.x + 14, PL.y - 30, "100金币! +1000", "#7fff7f");
   }
   sCoin(GS.streak);
   burst(c.x, c.y, "spark", 6, 180);
   popText(c.x, c.y - 8, "+100", "#ffe08a");
 }
-function collectEgg(c) {
-  c.taken = true;
-  GS.score += 1000;
-  GS.sBonus += 1000;
-  GS.time += 5;
+/* IWBTG 存档点:碰到即存档,以后死亡从这里重来 */
+function collectSave(s) {
+  if (s.taken) return;
+  s.taken = true;
+  GS.checkpointX = s.x - T / 2 + 4;
   sGolden();
-  burst(c.x, c.y, "spark", 14, 260);
-  popText(c.x, c.y - 10, "金蛋!+1000 +5秒", "#ffd23f");
-  /* 首次拿到本关金蛋才计入收集进度 */
-  if (markEgg(GS.li) && eggCount() >= LEVELS.length) {
-    var gotFull = false;
-    try {
-      if (!localStorage.getItem("niu_eggs_full")) {
-        localStorage.setItem("niu_eggs_full", "1");
-        gotFull = true;
-      }
-    } catch (e) {}
-    if (gotFull) {
-      GS.lives++;
-      GS.score += 5000;
-      GS.sBonus += 5000;
-      sOneUp();
-      popText(c.x, c.y - 34, "金蛋大满贯!! +1命 +5000", "#ffd23f");
-    }
-  }
+  burst(s.x, s.y, "spark", 14, 260);
+  part({
+    x: s.x,
+    y: s.y,
+    vx: 0,
+    vy: 0,
+    g: 0,
+    life: 0.4,
+    t: 0,
+    type: "ring",
+    size: 8,
+    col: "rgba(120,240,255,0.9)",
+  });
+  popText(s.x, s.y - 26, "存档!", "#8affc1");
 }
 function spawnCoinDrop(x, y) {
   var c = { x: x, y: y, t: Math.random() * TAU, taken: false };
@@ -2082,11 +1334,11 @@ function updatePlayer(dt) {
         collectCoin(c, false);
     }
   }
-  /* 金蛋收集 */
-  for (var egq = 0; egq < eggsEnt.length; egq++) {
-    var eggEnt = eggsEnt[egq];
-    if (eggEnt.taken) continue;
-    if (Math.abs(eggEnt.x - (p.x + p.w / 2)) < 30 && Math.abs(eggEnt.y - (p.y + p.h / 2)) < 40) collectEgg(eggEnt);
+  /* IWBTG 存档点:碰到即存 */
+  for (var sq2 = 0; sq2 < savesEnt.length; sq2++) {
+    var svE = savesEnt[sq2];
+    if (!svE.taken && Math.abs(svE.x - (p.x + p.w / 2)) < 30 && Math.abs(svE.y - (p.y + p.h / 2)) < 46)
+      collectSave(svE);
   }
   for (var j = itms.length - 1; j >= 0; j--) {
     var it = itms[j];
@@ -2136,28 +1388,25 @@ function updatePlayer(dt) {
         }
         if (canGrow) {
           p.big = true;
-          GS.time += 10;
           sPower();
-          popText(p.x + 14, p.y - 26, "变大啦! +10秒", "#ff8a5a");
+          popText(p.x + 14, p.y - 26, "变大啦!", "#ff8a5a");
         } else {
           GS.score += 1000;
           GS.sBonus += 1000;
-          GS.time += 5;
           sPower();
-          popText(p.x + 14, p.y - 26, "+1000 +5秒" + (p.big ? "" : " (头顶没空间)"), "#ff8a5a");
+          popText(p.x + 14, p.y - 26, "+1000" + (p.big ? "" : " (头顶没空间)"), "#ff8a5a");
         }
         burst(it.x, it.y, "spark", 12, 240);
       } else if (it.k === "star") {
         p.star = Math.max(p.star, 10);
-        GS.time += 5;
         sStarGet();
-        popText(p.x + 14, p.y - 26, "牛角无敌 10秒! +5秒", "#5ad4ff");
+        popText(p.x + 14, p.y - 26, "牛角无敌 10秒!", "#5ad4ff");
         burst(it.x, it.y, "spark", 16, 300);
       } else if (it.k === "bell") {
-        GS.lives++;
-        GS.time += 15;
+        GS.score += 2000;
+        GS.sBonus += 2000;
         sBell();
-        popText(p.x + 14, p.y - 26, "+1 命! +15秒", "#7fff7f");
+        popText(p.x + 14, p.y - 26, "金铃铛! +2000", "#7fff7f");
         burst(it.x, it.y, "spark", 14, 260);
       }
     }
@@ -2187,22 +1436,8 @@ function updatePlayer(dt) {
       burst(en.x + 13, en.y + 8, "spark", 16, 260);
     }
   }
-  if (
-    curLV.flagX > 0 &&
-    Math.abs(p.x + p.w / 2 - flagCenterX()) <= T * 0.55 &&
-    p.y + 10 < 12 * T &&
-    GS.state === "play"
-  ) {
-    startClear();
-  }
-  if (GS.li === FINAL_LV && !GS.bossActive && !GS.boss && p.x > 6 * T) {
+  if (!GS.bossActive && !GS.boss && curLV.bossAt > 0 && p.x > curLV.bossAt * T) {
     startBossIntro();
-  }
-  updateCheckpoint();
-  GS.time -= dt;
-  if (GS.time < 0) {
-    GS.time = 0;
-    die();
   }
 }
 
@@ -2409,37 +1644,6 @@ function triggerCrumble(tx, ty) {
   var key = tx + "," + ty;
   if (!crumbles[key]) crumbles[key] = { x: tx, y: ty, t: 0.75, total: 0.75 };
 }
-function openGate() {
-  if (GS.gateOpen || !GS.gateTiles || !GS.gateTiles.length) return;
-  GS.gateOpen = true;
-  for (var i = 0; i < GS.gateTiles.length; i++) {
-    var gt = GS.gateTiles[i];
-    if (tileAt(gt.x, gt.y) === 17) {
-      setTile(gt.x, gt.y, 0);
-      refreshWorldBlock(gt.x, gt.y);
-      burst(gt.x * T + T / 2, gt.y * T + T / 2, "shard", 7, 230);
-    }
-  }
-  sBreak();
-  addShake(7);
-  if (curLV && curLV.flagX > 0) {
-    popText((curLV.flagX - 3) * T, 7 * T, "旗门开启!", "#ffd23f");
-    /* 守关老板已灭:升起旗子 */
-    if (!GS.flagUp) {
-      GS.flagUp = true;
-      var fx2 = curLV.flagX;
-      for (var fy3 = 8; fy3 <= 11; fy3++) {
-        if (tileAt(fx2, fy3) === 0) setTile(fx2, fy3, 15);
-      }
-      if (GS.__flagRoot) {
-        GS.__flagRoot.visible = true;
-        burst(fx2 * T + T / 2, 9 * T, "spark", 18, 300);
-      }
-      sPerfect();
-      popText((fx2 + 1) * T, 6 * T, "旗子升起!", "#ffd23f");
-    }
-  }
-}
 function updateCrumbles(dt) {
   for (var key in crumbles) {
     var cr = crumbles[key];
@@ -2458,13 +1662,15 @@ function updateCrumbles(dt) {
   }
 }
 function updateServerSmoke(dt) {
-  if (GS.li !== FINAL_LV || !GS.boss) return;
+  if (!GS.boss || !curLV.arena) return;
   if (GS.state !== "bossintro" && GS.state !== "play" && GS.state !== "winseq") return;
+  var ax0 = (curLV.arena.x0 + 2) * T,
+    ax1 = (curLV.arena.x1 - 2) * T;
   serverSmokeClock -= dt;
   var interval = GS.state === "winseq" ? 0.045 : 0.2;
   while (serverSmokeClock <= 0) {
     serverSmokeClock += interval;
-    var sx = clamp(PL.x + rnd(-320, 560), 3 * T, 31 * T);
+    var sx = clamp(PL.x + rnd(-320, 560), ax0, ax1);
     var sy = rnd(210, 410);
     part({
       x: sx,
@@ -2478,31 +1684,6 @@ function updateServerSmoke(dt) {
       size: rnd(8, 15),
       col: "rgba(55,60,72,0.72)",
     });
-  }
-}
-function updateCheckpoint() {
-  if (GS.state !== "play" || !PL.ground || GS.checkpointLevel !== GS.li) return;
-  if (PL.x < GS.checkpointX + 24 * T) return;
-  var tx = Math.floor((PL.x + PL.w / 2) / T);
-  var floor = tileAt(tx, 12),
-    head = tileAt(tx, 11);
-  if ((floor === 1 || floor === 2) && head === 0) {
-    /* 检查点必须安全:附近没有尖刺/岩浆,也没有活着的敌人 */
-    var safe = true;
-    for (var dx2 = -2; dx2 <= 3 && safe; dx2++) {
-      var hc = tileAt(tx + dx2, 12);
-      if (hc === 10 || hc === 11) safe = false;
-    }
-    for (var ei = 0; ei < ents.length && safe; ei++) {
-      var en = ents[ei];
-      if (en.k === "move" || en.dead || en.gone || en.k === "bird" || en.k === "raven") continue;
-      if (Math.abs(en.x - tx * T) < 12 * T) safe = false;
-    }
-    if (safe) {
-      GS.checkpointX = tx * T + 4;
-      popText(PL.x + PL.w / 2, PL.y - 34, "检查点!", "#8affc1");
-      sClick();
-    }
   }
 }
 function hazardCheck() {
@@ -2850,7 +2031,6 @@ function updateEnemies(dt) {
                 popText(e.x + e.w / 2, e.y - 10, "GPT 老板被踩爆!+2000", "#c05aff");
                 for (var cd = 0; cd < 6; cd++) spawnCoinDrop(e.x + e.w / 2 + rnd(-70, 70), e.y - 20 - cd * 14);
                 sPerfect();
-                openGate();
               } else {
                 popText(e.x + e.w / 2, e.y - 10, "GPT 老板 HP:" + e.hp, "#ff5a5a");
               }
@@ -2869,7 +2049,6 @@ function updateEnemies(dt) {
               popText(e.x + e.w / 2, e.y - 10, "GPT 老板被撞爆!+2000", "#c05aff");
               for (var cd2 = 0; cd2 < 6; cd2++) spawnCoinDrop(e.x + e.w / 2 + rnd(-70, 70), e.y - 20 - cd2 * 14);
               sPerfect();
-              openGate();
             } else popText(e.x + e.w / 2, e.y - 10, "GPT 老板 HP:" + e.hp, "#ff5a5a");
           } else if (Math.abs(p.vx) > 285 && e.hurtT <= 0) {
             /* 冲撞也能撞 GPT 老板 */
@@ -2890,7 +2069,6 @@ function updateEnemies(dt) {
               popText(e.x + e.w / 2, e.y - 10, "GPT 老板被撞爆!+2000", "#c05aff");
               for (var cd3 = 0; cd3 < 6; cd3++) spawnCoinDrop(e.x + e.w / 2 + rnd(-70, 70), e.y - 20 - cd3 * 14);
               sPerfect();
-              openGate();
             } else popText(e.x + e.w / 2, e.y - 10, "GPT 老板 HP:" + e.hp, "#ff5a5a");
           } else if (e.hurtT <= 0) {
             damagePlayer();
@@ -3019,7 +2197,17 @@ function bossDamage(b, n, how) {
     popText(b.x + b.w / 2, b.y - 16, (how === "shot" ? "奶弹命中! " : "") + "HP:" + b.hp, "#ff5a5a");
   }
 }
+function arenaL() {
+  return (curLV.arena.x0 + 1.3) * T;
+}
+function arenaR(bw) {
+  return (curLV.arena.x1 - 0.3) * T - bw;
+}
+function arenaCenterX() {
+  return ((curLV.arena.x0 + curLV.arena.x1 + 1) / 2) * T;
+}
 function startBossIntro() {
+  var cx = arenaCenterX();
   GS.bossActive = false;
   GS.bossIntro = 2.2;
   GS.state = "bossintro";
@@ -3029,9 +2217,9 @@ function startBossIntro() {
   sNiuLai();
   addShake(14);
   flash = 0.7;
-  popText(16 * T + 55, 12 * T - 130, "Anthropic Dario:你的算力,归我了!!", "#ff2a9a");
+  popText(cx + 55, 12 * T - 130, "Anthropic Dario:你的算力,归我了!!", "#ff2a9a");
   GS.boss = {
-    x: 16 * T,
+    x: cx - 55,
     y: 12 * T - 84,
     w: 110,
     h: 84,
@@ -3073,8 +2261,8 @@ function updateBoss(dt) {
     addShake(9);
     flash = 0.6;
   }
-  var L = 1.3 * T,
-    R = 32.7 * T - b.w;
+  var L = arenaL(),
+    R = arenaR(b.w);
   var teleK = b.phase === 3 ? 0.78 : b.phase === 2 ? 0.9 : 1;
   if (b.state === "idle") {
     b.face = p.x > b.x ? 1 : -1;
@@ -3137,7 +2325,19 @@ function updateBoss(dt) {
   } else if (b.state === "beam") {
     b.beamT -= dt;
     /* 光束覆盖 beamRow..beamRow+1 两行:低位躲平台,高位贴地面 */
-    if (!p.dead && overlap(1 * T, b.beamRow * T + 6, 32 * T, 2 * T - 12, p.x + 3, p.y + 3, p.w - 6, p.h - 6))
+    if (
+      !p.dead &&
+      overlap(
+        (curLV.arena.x0 + 1) * T,
+        b.beamRow * T + 6,
+        (curLV.arena.x1 - curLV.arena.x0 - 1) * T,
+        2 * T - 12,
+        p.x + 3,
+        p.y + 3,
+        p.w - 6,
+        p.h - 6,
+      )
+    )
       damagePlayer();
     if (b.beamT <= 0) {
       b.state = "recover";
@@ -3320,7 +2520,6 @@ function defeatMiniBoss(e, how) {
   popText(e.x + e.w / 2, e.y - 10, "GPT 老板被" + how + "+2000", "#c05aff");
   for (var cd = 0; cd < 6; cd++) spawnCoinDrop(e.x + e.w / 2 + rnd(-70, 70), e.y - 20 - cd * 14);
   sPerfect();
-  openGate();
 }
 function updateShots(dt) {
   /* Boss 战自动射击:有目标且冷却好则自动开火 */
@@ -3414,7 +2613,6 @@ function defeatBoss() {
   var b = GS.boss;
   b.dead = true;
   GS.bossActive = false;
-  markCleared(FINAL_LV);
   for (var i2 = fires.length - 1; i2 >= 0; i2--) {
     if (fires[i2].mesh && dynGroup) dynGroup.remove(fires[i2].mesh);
   }
@@ -3460,132 +2658,15 @@ function defeatBoss() {
 }
 
 /* ============ 流程状态 ============ */
-function startClear() {
-  GS.state = "clear";
-  GS.clearT = 0;
-  sFlag();
-  addShake(4);
-  PL.vx = 0;
-  PL.vy = 0;
-  markCleared(GS.li);
-  var nxT = GS.li + 1;
-  if (nxT < LEVELS.length) popText(W / 2, H / 2 - 130, "解锁第 " + (nxT + 1) + " 关!", "#8aff5a");
-  GS.perfect = true;
-  for (var i = 0; i < coinsEnt.length; i++) {
-    if (!coinsEnt[i].taken) {
-      GS.perfect = false;
-      break;
-    }
-  }
-  if (GS.perfect) {
-    GS.score += 5000;
-    GS.sBonus += 5000;
-    sPerfect();
-    popText(PL.x + 14, PL.y - 56, "完美收集!+5000", "#ffd43f");
-  }
-  try {
-    var bk = "niu_best_lv" + GS.li;
-    var pv = parseInt(localStorage.getItem(bk) || "0", 10) || 0;
-    if (GS.score > pv) localStorage.setItem(bk, "" + GS.score);
-  } catch (e) {}
-}
 function handleDead(dt) {
+  /* IWBTG:没有生命上限,死亡动画后从最近存档点满状态重来 */
   GS.deadT += dt;
   PL.vy += 1500 * dt;
   PL.y += PL.vy * dt;
   if (GS.deadT > 1.8) {
-    GS.lives--;
-    if (GS.lives < 0) {
-      GS.state = "gameover";
-      if (GS.score > GS.hs) {
-        GS.hs = GS.score;
-        try {
-          localStorage.setItem("niu_best", "" + GS.hs);
-        } catch (e) {}
-      }
-      musicStop();
-    } else loadLevel(GS.li, false);
+    loadLevel(GS.li, false);
     /* 重生短暂无敌:防止刚落地就被守尸的敌人秒杀 */
     PL.inv = Math.max(PL.inv, 1.5);
-  }
-}
-function handleClear(dt) {
-  GS.clearT += dt;
-  var fy = 11 * T - 36;
-  if (PL.y < fy) {
-    PL.y += 240 * dt;
-    if (PL.y > fy) {
-      PL.y = fy;
-      PL.vy = 0;
-    }
-  } else {
-    PL.vx = 120;
-    PL.face = 1;
-    PL.x += PL.vx * dt;
-    collideX(PL);
-    var tyy = Math.floor((PL.y + PL.h + 4) / T);
-    var txL = Math.floor((PL.x + 4) / T),
-      txR = Math.floor((PL.x + PL.w - 4) / T);
-    var land = solid(tileAt(txL, tyy)) || solid(tileAt(txR, tyy));
-    if (!land) {
-      PL.y += 160 * dt;
-      var ty2 = Math.floor((PL.y + PL.h) / T);
-      if (solid(tileAt(txL, ty2)) || solid(tileAt(txR, ty2))) {
-        PL.y = ty2 * T - PL.h - 0.01;
-      }
-    }
-  }
-  if (Math.random() < 0.12)
-    part({
-      x: rnd(PL.x - 200, PL.x + 600),
-      y: rnd(80, 420),
-      vx: rnd(-20, 20),
-      vy: rnd(-40, 60),
-      g: 60,
-      life: 0.8,
-      t: 0,
-      type: "fir",
-      size: rnd(2, 5),
-      col: pick(["#ffd43f", "#ff6a3f", "#5ad4ff", "#8aff5a", "#fff", "#ff9ad4"]),
-    });
-  if (Math.random() < 0.05) sFirework();
-  /* 结算:剩余时间换分 */
-  if (GS.time > 0) {
-    var drain = Math.min(GS.time, dt * 80);
-    GS.time -= drain;
-    var tb = Math.round(drain * 20);
-    GS.score += tb;
-    GS.sBonus += tb;
-    if (Math.random() < 0.3) sClick();
-  }
-  if (GS.clearT > 2.6) {
-    /*
-     * AI 演示每次只验证当前所选关，回到同一张卡片方便观看者确认
-     * 「本关已通关」标记，而不是快速掠过数个世界造成突兀跳场。
-     */
-    if (AI.enabled) {
-      aiReleaseKeys();
-      AI.status = "本关已验证";
-      GS.selIdx = GS.li;
-      GS.state = "select";
-      makeSky();
-      sClick();
-      return;
-    }
-    var nx = GS.li + 1;
-    if (nx < LEVELS.length) loadLevel(nx, true);
-    else {
-      GS.state = "win";
-      musicStop();
-      sGoal();
-      sFirework();
-      if (GS.score > GS.hs) {
-        GS.hs = GS.score;
-        try {
-          localStorage.setItem("niu_best", "" + GS.hs);
-        } catch (e) {}
-      }
-    }
   }
 }
 function handleWinseq(dt) {
@@ -3621,10 +2702,6 @@ function handleWinseq(dt) {
   }
 }
 
-function flagCenterX() {
-  return curLV.flagX * T + T / 2;
-}
-
 /* ============ 更新 ============ */
 function update(dt) {
   GT += dt;
@@ -3634,7 +2711,6 @@ function update(dt) {
     return;
   }
   if (GS.state === "play") {
-    updateAIMode(dt);
     updateCrumbles(dt);
     updatePlayer(dt);
     updateBoss(dt);
@@ -3660,18 +2736,16 @@ function update(dt) {
     }
   } else if (GS.state === "dead") {
     handleDead(dt);
-  } else if (GS.state === "clear") {
-    handleClear(dt);
   } else if (GS.state === "winseq") {
     handleWinseq(dt);
   }
   syncTouchControls();
-  if (GS.state === "play" || GS.state === "clear") {
+  if (GS.state === "play") {
     camX = clamp(lerp(camX, PL.x - W * 0.42, 1 - Math.pow(0.002, dt)), 0, curLV.w * T - W);
   }
   updateServerSmoke(dt);
   updateFX(dt);
-  if (GS.state === "title" || GS.state === "select" || GS.state === "gameover" || GS.state === "win") {
+  if (GS.state === "title" || GS.state === "win") {
     if (Math.random() < 0.02)
       part({
         x: rnd(-100, 1060),
@@ -3685,7 +2759,7 @@ function update(dt) {
         size: rnd(2, 4),
         col: "rgba(255,255,255,0.8)",
       });
-    if (GS.state === "title" || GS.state === "select" || GS.state === "win") camX += dt * 30;
+    camX += dt * 30;
   }
 }
 
@@ -4406,24 +3480,27 @@ function buildMiniBoss() {
   wrap2.userData = g.userData;
   return wrap2;
 }
-function buildEgg3D() {
+/* IWBTG 存档点:悬浮旋转的水晶菱柱,激活后变绿 */
+function buildSave3D() {
   var g = new THREE.Group();
-  var shell = ball(0.34, 0xfff8e0, 10, 8);
-  shell.scale.set(1, 1.38, 0.92);
-  clay(shell.geometry, 0.02);
-  g.add(shell);
-  var dot = ball(0.06, 0xffd23f, 6, 5);
-  dot.position.set(0.12, 0.22, 0.26);
-  g.add(dot);
-  var dot2 = ball(0.05, 0xffd23f, 6, 5);
-  dot2.position.set(-0.16, -0.1, 0.24);
-  g.add(dot2);
-  var dot3 = ball(0.045, 0xffa33f, 6, 5);
-  dot3.position.set(0.08, -0.24, 0.22);
-  g.add(dot3);
-  var shine = ball(0.05, 0xffffff, 5, 4);
-  shine.position.set(0.22, 0.3, 0.28);
-  g.add(shine);
+  var crystal = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.55),
+    new THREE.MeshLambertMaterial({ color: 0x6ae0ff, emissive: 0x0a5a78, emissiveIntensity: 0.9 }),
+  );
+  crystal.scale.set(0.72, 1.25, 0.72);
+  crystal.castShadow = true;
+  g.add(crystal);
+  var halo = new THREE.Mesh(
+    new THREE.TorusGeometry(0.66, 0.05, 8, 22),
+    new THREE.MeshBasicMaterial({ color: 0x9aeaff, transparent: true, opacity: 0.65 }),
+  );
+  halo.rotation.x = Math.PI / 2;
+  g.add(halo);
+  var base = box(0.9, 0.16, 0.9, 0x3a4a5c, 0.01);
+  base.position.y = -0.72;
+  g.add(base);
+  g.userData.crystal = crystal;
+  g.userData.halo = halo;
   return g;
 }
 function buildItem3D(k) {
@@ -4777,7 +3854,10 @@ function buildDecor3D(tt, idx, seed, hgt) {
 }
 function buildServerRoom3D() {
   var floorY = worldY(12 * T);
-  for (var rx = 3; rx <= 31; rx += 5) {
+  var ax0 = curLV.arena.x0,
+    ax1 = curLV.arena.x1;
+  var ac = arenaCenterX();
+  for (var rx = ax0 + 3; rx <= ax1 - 3; rx += 5) {
     var rack = new THREE.Group();
     var shell = box(5.8, 7.2, 2.1, 0x151a24, 0.02);
     shell.position.y = 3.6;
@@ -4797,12 +3877,12 @@ function buildServerRoom3D() {
     rack.position.set(worldX(rx * T), floorY, -4.2);
     dynGroup.add(rack);
   }
-  var pipeA = cyl(0.2, 0.2, worldX(28 * T), 0x7b8494, 10);
+  var pipeA = cyl(0.2, 0.2, worldX((ax1 - ax0 - 6) * T), 0x7b8494, 10);
   pipeA.rotation.z = Math.PI / 2;
-  pipeA.position.set(worldX(17 * T), floorY + 24, -4.4);
+  pipeA.position.set(ac, floorY + 24, -4.4);
   dynGroup.add(pipeA);
   var sign = makeTextSprite("ANTHROPIC 机房", 3.2, "#ff9adf");
-  sign.position.set(worldX(17 * T), floorY + 27, -3.8);
+  sign.position.set(ac, floorY + 27, -3.8);
   dynGroup.add(sign);
 }
 function buildWorld3D() {
@@ -4830,76 +3910,9 @@ function buildWorld3D() {
     makeTextSprite: makeTextSprite,
   });
   instMatLava = built.lavaMat;
-  var i, j;
-  /* —— 旗杆:从地面立起来 + 牛头骨黑旗(海报同款) —— */
-  if (curLV.flagX > 0) {
-    var fpx = worldX(curLV.flagX * T + T / 2);
-    var gY = worldY(12 * T);
-    var flagRoot = new THREE.Group();
-    dynGroup.add(flagRoot);
-    /* 击败守关老板后才升起 */
-    flagRoot.visible = false;
-    var pole = cyl(0.16, 0.16, 17.6, 0xc4c9cf, 10);
-    pole.position.set(fpx, gY + 8.8, 0);
-    flagRoot.add(pole);
-    var knob = ball(0.34, 0xffd23f, 8, 6);
-    knob.position.set(fpx, gY + 17.8, 0);
-    flagRoot.add(knob);
-    var base = box(1.6, 0.8, 1.6, 0x6a6a72);
-    base.position.set(fpx, gY + 0.4, 0);
-    flagRoot.add(base);
-    var flagC = document.createElement("canvas");
-    flagC.width = 256;
-    flagC.height = 160;
-    var fg = flagC.getContext("2d");
-    fg.fillStyle = "#111114";
-    fg.fillRect(0, 0, 256, 160);
-    fg.strokeStyle = "#2a2a30";
-    fg.lineWidth = 4;
-    fg.strokeRect(2, 2, 252, 156);
-    fg.fillStyle = "#e8e8ec";
-    fg.beginPath();
-    fg.arc(128, 78, 34, 0, TAU);
-    fg.fill();
-    fg.fillStyle = "#111114";
-    fg.beginPath();
-    fg.ellipse(112, 70, 7, 10, 0, 0, TAU);
-    fg.fill();
-    fg.beginPath();
-    fg.ellipse(144, 70, 7, 10, 0, 0, TAU);
-    fg.fill();
-    fg.beginPath();
-    fg.moveTo(128, 84);
-    fg.lineTo(122, 104);
-    fg.lineTo(134, 104);
-    fg.closePath();
-    fg.fill();
-    fg.strokeStyle = "#e8e8ec";
-    fg.lineWidth = 9;
-    fg.lineCap = "round";
-    fg.beginPath();
-    fg.moveTo(100, 52);
-    fg.quadraticCurveTo(84, 30, 66, 26);
-    fg.stroke();
-    fg.beginPath();
-    fg.moveTo(156, 52);
-    fg.quadraticCurveTo(172, 30, 190, 26);
-    fg.stroke();
-    var flagTex = new THREE.CanvasTexture(flagC);
-    var flagG = new THREE.Group();
-    var flagM = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.6, 2.25),
-      new THREE.MeshLambertMaterial({ map: flagTex, side: THREE.DoubleSide }),
-    );
-    flagM.position.set(1.95, 0, 0);
-    flagG.add(flagM);
-    flagG.position.set(fpx, gY + 16.2, 0);
-    flagRoot.add(flagG);
-    GS.__flagG = flagG;
-    GS.__flagRoot = flagRoot;
-  }
-  /* 装饰 */
-  if (GS.li === FINAL_LV) buildServerRoom3D();
+  var j;
+  /* 装饰:决战区用机房机架,其余路段用主题植被 */
+  if (curLV.arena) buildServerRoom3D();
   else {
     var decoAt = 0;
     for (var dx = 6; dx < curLV.w - 4; dx += Math.floor(rnd(6, 10))) {
@@ -4920,12 +3933,12 @@ function buildWorld3D() {
     dynGroup.add(cm);
     co.mesh = cm;
   }
-  /* 金蛋 */
-  for (j = 0; j < eggsEnt.length; j++) {
-    var eggm = eggsEnt[j];
-    eggm.mesh = buildEgg3D();
-    eggm.mesh.position.set(worldX(eggm.x), worldY(eggm.y), 0.2);
-    dynGroup.add(eggm.mesh);
+  /* IWBTG 存档点:发光水晶,激活后变绿 */
+  for (j = 0; j < savesEnt.length; j++) {
+    var svm = savesEnt[j];
+    svm.mesh = buildSave3D();
+    svm.mesh.position.set(worldX(svm.x), worldY(svm.y), 0.3);
+    dynGroup.add(svm.mesh);
   }
   /* 玩家 */
   mCalf = buildCalf();
@@ -5036,7 +4049,7 @@ function sync3D() {
   }
   var heart = Math.sin(GT * 3) * 0.04;
   if (mCalf) {
-    var inTitle = GS.state === "title" || GS.state === "select" || GS.state === "gameover" || GS.state === "win";
+    var inTitle = GS.state === "title" || GS.state === "win";
     var moving = !inTitle && Math.abs(PL.vx) > 12 && PL.ground;
     var jy = inTitle ? 0 : wy(PL.y + PL.h);
     mCalf.position.set(inTitle ? -5.5 : wx(PL.x + 14), inTitle ? 0.45 : jy, inTitle ? 1.6 : 1.4);
@@ -5200,11 +4213,11 @@ function sync3D() {
     var bw = GS.boss;
     var showWarn = bw.state === "warn" && bw.next === "beam";
     GS.__beamWarn.visible = showWarn && ((GT * 8) | 0) % 2 === 0;
-    if (showWarn) GS.__beamWarn.position.set(worldX(17 * T), worldY((bw.beamRow + 1) * T), 0.8);
+    if (showWarn) GS.__beamWarn.position.set(worldX(arenaCenterX()), worldY((bw.beamRow + 1) * T), 0.8);
     var showBeam = bw.state === "beam";
     GS.__beam.visible = showBeam;
     if (showBeam) {
-      GS.__beam.position.set(worldX(17 * T), worldY((bw.beamRow + 1) * T), 0.8);
+      GS.__beam.position.set(worldX(arenaCenterX()), worldY((bw.beamRow + 1) * T), 0.8);
       GS.__beam.material.opacity = 0.65 + Math.sin(GT * 40) * 0.2;
     }
   }
@@ -5246,15 +4259,18 @@ function sync3D() {
       }
     }
   }
-  /* 金蛋漂浮闪金光 */
-  for (var k3 = 0; k3 < eggsEnt.length; k3++) {
-    var eg3 = eggsEnt[k3];
-    if (!eg3.mesh) continue;
-    if (eg3.taken) eg3.mesh.visible = false;
-    else {
-      eg3.mesh.visible = true;
-      eg3.mesh.position.y = worldY(eg3.y + Math.sin(eg3.t * 3.2) * 4);
-      eg3.mesh.rotation.y = Math.sin(GT * 2 + k3) * 0.5;
+  /* 存档点水晶:未激活悬浮旋转发蓝光,激活后变绿 */
+  for (var k3 = 0; k3 < savesEnt.length; k3++) {
+    var sv3 = savesEnt[k3];
+    if (!sv3.mesh) continue;
+    sv3.mesh.visible = true;
+    sv3.mesh.position.y = worldY(sv3.y + Math.sin(GT * 2.4 + k3) * 3.5);
+    sv3.mesh.rotation.y = GT * 1.6 + k3;
+    var on = sv3.taken || GS.checkpointX >= sv3.x - T / 2;
+    var cry = sv3.mesh.userData.crystal;
+    if (cry) {
+      cry.material.color.setHex(on ? 0x7dff9a : 0x6ae0ff);
+      cry.material.emissive.setHex(on ? 0x0a6a2a : 0x0a5a78);
     }
   }
   /* 碎板预警:坍塌前逐渐加剧抖动。 */
@@ -5282,9 +4298,6 @@ function sync3D() {
     ql.scale.setScalar(1 + Math.sin(GT * 3 + oi) * 0.05);
   }
   /* 旗帜飘动 */
-  if (GS.__flagG) {
-    GS.__flagG.rotation.y = Math.sin(GT * 3) * 0.18;
-  }
   if (GS.__titleFlag) {
     GS.__titleFlag.rotation.y = Math.sin(GT * 1.2) * 0.12;
   }
@@ -5356,7 +4369,7 @@ var CAMZ = 52,
   GAME_FOV = 54;
 function updateCamera() {
   if (!THREE_OK) return;
-  var inTitle = GS.state === "title" || GS.state === "select" || GS.state === "gameover" || GS.state === "win";
+  var inTitle = GS.state === "title" || GS.state === "win";
   var cx = inTitle ? 2 : worldX(camX + W * 0.5);
   cx += shake > 0 ? rnd(-shake, shake) * S : 0;
   var cy = worldY(H * 0.5);
@@ -5382,7 +4395,7 @@ function initClouds2D() {
   }
 }
 function makeSky() {
-  if (GS.state === "title" || GS.state === "select" || GS.state === "win") {
+  if (GS.state === "title" || GS.state === "win") {
     SKY_G = 4;
     return;
   }
@@ -5471,122 +4484,6 @@ var SKY_PAL = [
     cloud: "rgba(255,140,80,0.4)",
   },
 ];
-/*
- * 地形主题决定砖块材质；关卡背景则单独由名片的 backdrop 决定。
- * 这样同用一套月面/岩浆瓦片的世界仍能有自己的模型梗与远景，而不是
- * 只能换一个色相。
- */
-var LEVEL_BACKDROPS = {
-  grok: {
-    top: "#18213d",
-    mid: "#356a84",
-    bot: "#8acb72",
-    sun: "#d9f7ff",
-    sunGlow: "rgba(111,224,255,0.38)",
-    hill: "#3f8d5a",
-    hillFar: "#6bb987",
-    cloud: "rgba(225,250,255,0.75)",
-    backdrop: "grok",
-  },
-  doubao: {
-    top: "#b95832",
-    mid: "#ec9a54",
-    bot: "#f5d39a",
-    sun: "#fff1c5",
-    sunGlow: "rgba(255,224,142,0.44)",
-    hill: "#b86a3d",
-    hillFar: "#da9460",
-    cloud: "rgba(255,242,205,0.78)",
-    backdrop: "doubao",
-  },
-  qwen: {
-    top: "#182856",
-    mid: "#487fbd",
-    bot: "#b8e2f4",
-    sun: "#effbff",
-    sunGlow: "rgba(214,245,255,0.42)",
-    hill: "#74aac5",
-    hillFar: "#9ccce2",
-    cloud: "rgba(245,252,255,0.86)",
-    backdrop: "qwen",
-  },
-  chatgpt: {
-    top: "#46172a",
-    mid: "#b34338",
-    bot: "#f39754",
-    sun: "#ffe0a0",
-    sunGlow: "rgba(255,130,74,0.52)",
-    hill: "#702d2c",
-    hillFar: "#9c4737",
-    cloud: "rgba(255,190,120,0.5)",
-    backdrop: "chatgpt",
-  },
-  ernie: {
-    top: "#0c183a",
-    mid: "#274879",
-    bot: "#7897c8",
-    sun: "#f4dd9c",
-    sunGlow: "rgba(255,216,128,0.26)",
-    hill: "#263f70",
-    hillFar: "#4f6e9d",
-    cloud: "rgba(220,235,255,0.28)",
-    backdrop: "ernie",
-  },
-  gemini: {
-    top: "#17133f",
-    mid: "#4d3287",
-    bot: "#9873ca",
-    sun: "#e9d6ff",
-    sunGlow: "rgba(205,155,255,0.48)",
-    hill: "#4b347f",
-    hillFar: "#7658a8",
-    cloud: "rgba(238,220,255,0.36)",
-    backdrop: "gemini",
-  },
-  huggingface: {
-    top: "#f37a63",
-    mid: "#ffc25c",
-    bot: "#fff1b3",
-    sun: "#fff7d8",
-    sunGlow: "rgba(255,236,140,0.54)",
-    hill: "#e68b53",
-    hillFar: "#f4b96c",
-    cloud: "rgba(255,255,245,0.84)",
-    backdrop: "huggingface",
-  },
-  spark: {
-    top: "#260d19",
-    mid: "#8b2927",
-    bot: "#e95f32",
-    sun: "#ffd188",
-    sunGlow: "rgba(255,112,50,0.6)",
-    hill: "#4a1d22",
-    hillFar: "#783028",
-    cloud: "rgba(255,176,110,0.35)",
-    backdrop: "spark",
-  },
-  claude: {
-    top: "#20153e",
-    mid: "#5f3b83",
-    bot: "#a97aa8",
-    sun: "#f5deb5",
-    sunGlow: "rgba(255,210,166,0.34)",
-    hill: "#34224e",
-    hillFar: "#5a3d6c",
-    cloud: "rgba(244,222,255,0.2)",
-    backdrop: "claude",
-  },
-};
-function activeSkyPalette() {
-  var inLevel =
-    GS.state === "play" ||
-    GS.state === "bossintro" ||
-    GS.state === "clear" ||
-    GS.state === "winseq" ||
-    GS.state === "dead";
-  var backdrop = inLevel && curLV && curLV.profile ? curLV.profile.backdrop : "";
-  return LEVEL_BACKDROPS[backdrop] || SKY_PAL[SKY_G] || SKY_PAL[0];
-}
 var STARS2D = [];
 function initStars2D() {
   STARS2D = [];
@@ -5600,14 +4497,14 @@ function initStars2D() {
 }
 function drawBG2D(c) {
   if (typeof SKY_G !== "number" || !SKY_PAL[SKY_G]) SKY_G = 0;
-  var p = activeSkyPalette();
+  var p = SKY_PAL[SKY_G] || SKY_PAL[0];
   var g = c.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, p.top);
   g.addColorStop(0.55, p.mid);
   g.addColorStop(1, p.bot);
   c.fillStyle = g;
   c.fillRect(0, 0, W, H);
-  if (p.backdrop === "ernie" || p.backdrop === "gemini" || p.backdrop === "claude" || SKY_G === 4 || SKY_G === 5) {
+  if (SKY_G === 4 || SKY_G === 5) {
     /* 太空/星云:星星(月面+地球,星云纯星) */
     for (var st = 0; st < STARS2D.length; st++) {
       var s2 = STARS2D[st];
@@ -5616,7 +4513,7 @@ function drawBG2D(c) {
       c.fillRect(s2.x, s2.y, s2.s, s2.s);
     }
     c.globalAlpha = 1;
-    if (p.backdrop === "ernie" || SKY_G === 4) {
+    if (SKY_G === 4) {
       var ex = 70,
         ey = H - 70;
       var eg = c.createRadialGradient(ex - 12, ey - 12, 8, ex, ey, 58);
@@ -5637,10 +4534,8 @@ function drawBG2D(c) {
       c.arc(ex + 8, ey + 20, 20, 0, TAU);
       c.fill();
     }
-    drawBackdropFlavor(c, p.backdrop);
     return;
   }
-  drawBackdropFlavor(c, p.backdrop);
   c.save();
   c.globalAlpha = 0.9;
   c.fillStyle = p.sunGlow;
@@ -5671,132 +4566,6 @@ function drawBG2D(c) {
     var hx2 = ((((h2 * 330 + 140 - camX * 0.32) % (W + 520)) + W + 520) % (W + 520)) - 260;
     mountain2D(c, hx2, H - 120, 70 + hash(h2 + 21) * 60, 300);
   }
-}
-function drawBackdropFlavor(c, backdrop) {
-  if (!backdrop) return;
-  c.save();
-  c.lineCap = "round";
-  c.lineJoin = "round";
-  if (backdrop === "grok") {
-    c.globalAlpha = 0.3;
-    c.strokeStyle = "#9eeaff";
-    c.lineWidth = 3;
-    c.beginPath();
-    c.moveTo(90, 70);
-    c.lineTo(154, 134);
-    c.moveTo(154, 70);
-    c.lineTo(90, 134);
-    c.stroke();
-    c.globalAlpha = 0.62;
-    c.fillStyle = "#d9f7ff";
-    c.beginPath();
-    c.arc(114, 84, 9, 0, TAU);
-    c.fill();
-    c.strokeStyle = "#9eeaff";
-    c.lineWidth = 2;
-    c.beginPath();
-    c.arc(114, 84, 21, 0.3, TAU - 0.3);
-    c.stroke();
-  } else if (backdrop === "doubao") {
-    c.globalAlpha = 0.22;
-    c.fillStyle = "#fff0cb";
-    for (var db = 0; db < 7; db++) {
-      var dx = 65 + db * 124;
-      var dy = 105 + ((db * 47) % 70);
-      c.beginPath();
-      c.ellipse(dx, dy, 19, 13, -0.35, 0, TAU);
-      c.fill();
-      c.fillRect(dx + 17, dy - 2, 24, 4);
-    }
-    c.globalAlpha = 0.45;
-    c.fillStyle = "#6f3026";
-    c.font = "bold 15px " + FONT;
-    c.fillText("010 010 010", 112, 178);
-  } else if (backdrop === "qwen") {
-    c.globalAlpha = 0.18;
-    c.strokeStyle = "#f5feff";
-    c.lineWidth = 2;
-    for (var qw = 0; qw < 3; qw++) {
-      c.beginPath();
-      c.ellipse(150 + qw * 260, 122, 86 + qw * 18, 25 + qw * 7, -0.2, 0, TAU);
-      c.stroke();
-    }
-    c.globalAlpha = 0.55;
-    c.fillStyle = "#effbff";
-    c.beginPath();
-    c.arc(W - 142, 98, 34, 0, TAU);
-    c.fill();
-    c.fillStyle = "rgba(75,140,190,0.35)";
-    c.beginPath();
-    c.arc(W - 155, 90, 8, 0, TAU);
-    c.arc(W - 132, 112, 11, 0, TAU);
-    c.fill();
-  } else if (backdrop === "chatgpt") {
-    c.globalAlpha = 0.25;
-    c.strokeStyle = "#ffe1b0";
-    c.lineWidth = 3;
-    for (var cg = 0; cg < 4; cg++) {
-      var cx = 90 + cg * 215;
-      c.beginPath();
-      c.arc(cx, 120 + (cg % 2) * 26, 24, 0, TAU);
-      c.stroke();
-      c.beginPath();
-      c.moveTo(cx + 16, 140 + (cg % 2) * 26);
-      c.lineTo(cx + 28, 151 + (cg % 2) * 26);
-      c.stroke();
-    }
-    c.globalAlpha = 0.45;
-    c.fillStyle = "#ffd278";
-    c.font = "bold 15px " + FONT;
-    c.fillText("PROMPT > 不要踩岩浆", 84, 190);
-  } else if (backdrop === "huggingface") {
-    c.globalAlpha = 0.22;
-    for (var hf = 0; hf < 5; hf++) {
-      var hx = 100 + hf * 185;
-      var hy = 96 + (hf % 2) * 50;
-      c.fillStyle = hf % 2 ? "#ff8c67" : "#ffe07a";
-      c.beginPath();
-      c.arc(hx, hy, 22, 0, TAU);
-      c.fill();
-      c.strokeStyle = "#6b4535";
-      c.lineWidth = 2;
-      c.beginPath();
-      c.arc(hx - 7, hy - 3, 2, 0, TAU);
-      c.arc(hx + 7, hy - 3, 2, 0, TAU);
-      c.moveTo(hx - 9, hy + 8);
-      c.quadraticCurveTo(hx, hy + 17, hx + 9, hy + 8);
-      c.stroke();
-    }
-  } else if (backdrop === "spark") {
-    c.globalAlpha = 0.42;
-    c.strokeStyle = "#ffd078";
-    c.lineWidth = 2;
-    for (var sp = 0; sp < 24; sp++) {
-      var sx = (sp * 137 + 41) % W;
-      var sy = 62 + ((sp * 71) % 215);
-      c.beginPath();
-      c.moveTo(sx, sy);
-      c.lineTo(sx - 7, sy + 18);
-      c.stroke();
-    }
-    c.globalAlpha = 0.2;
-    c.fillStyle = "#ffcf83";
-    c.font = "bold 46px " + FONT;
-    c.fillText("TOKEN", W / 2, 172);
-  } else if (backdrop === "claude") {
-    c.globalAlpha = 0.22;
-    for (var sr = 0; sr < 6; sr++) {
-      var rx = 42 + sr * 162;
-      c.fillStyle = sr % 2 ? "#c693bc" : "#8c7bc8";
-      c.fillRect(rx, 62, 92, 152);
-      c.fillStyle = "#2a1c42";
-      for (var led = 0; led < 5; led++) c.fillRect(rx + 14, 80 + led * 23, 58, 7);
-      c.fillStyle = "#f4deaf";
-      c.fillRect(rx + 75, 80, 5, 5);
-      c.fillRect(rx + 75, 103, 5, 5);
-    }
-  }
-  c.restore();
 }
 function cloud2D(c, x, y, s) {
   c.beginPath();
@@ -5845,126 +4614,63 @@ function drawHUD2D(c) {
   hg.addColorStop(1, "rgba(8,10,20,0)");
   c.fillStyle = hg;
   c.fillRect(0, 0, W, 56);
-  c.save();
-  c.translate(24, 25);
-  c.beginPath();
-  c.arc(0, 0, 13, 0, TAU);
-  c.fillStyle = "rgba(255,210,63,0.22)";
-  c.fill();
-  c.fillStyle = "#ffd23f";
-  c.beginPath();
-  c.arc(0, 0, 10, 0, TAU);
-  c.fill();
-  c.fillStyle = "#7a4a1e";
-  c.fillRect(-1, -12, 2, 4);
-  c.fillRect(4, -12, 2, 4);
-  c.fillStyle = "#fff";
-  c.beginPath();
-  c.arc(-3, -2, 3, 0, TAU);
-  c.arc(3, -2, 3, 0, TAU);
-  c.fill();
-  c.fillStyle = "#2a1a10";
-  c.beginPath();
-  c.arc(-3, -2, 1.5, 0, TAU);
-  c.arc(3, -2, 1.5, 0, TAU);
-  c.fill();
-  c.restore();
-  c.textBaseline = "middle";
-  c.textAlign = "left";
-  c.font = "bold 18px " + FONT;
-  hintText(c, "×" + Math.max(0, GS.lives), 42, 26, "bold 18px " + FONT, "#fff", "left");
+  /* 死亡计数(IWBTG 灵魂):骷髅 + 次数,死得越多越红 */
+  var dc = Math.min(255, 90 + GS.deaths * 6);
+  hintText(c, "☠", 34, 25, "bold 22px " + FONT, "#fff", "left");
+  hintText(c, "×" + GS.deaths, 66, 26, "bold 20px " + FONT, "rgb(" + dc + ",60,60)", "left");
+  /* 金币 */
   c.fillStyle = "#f4b840";
   c.beginPath();
-  c.arc(96, 25, 7, 0, TAU);
+  c.arc(128, 25, 7, 0, TAU);
   c.fill();
-  hintText(c, "×" + GS.coins, 108, 26, "bold 18px " + FONT, "#fff", "left");
-  hintText(c, ("0000000" + GS.score).slice(-7), 168, 26, "bold 18px " + FONT, "#ffd23f", "left");
-  /* 金蛋收集进度 */
-  var eggn = eggCount(),
-    eggFull = eggn >= LEVELS.length;
-  c.save();
-  c.translate(268, 25);
-  c.fillStyle = eggFull ? "rgba(255,210,63,0.35)" : "rgba(255,248,224,0.28)";
-  c.beginPath();
-  c.ellipse(0, 1, 6.5, 8.5, 0, 0, TAU);
-  c.fill();
-  c.fillStyle = eggFull ? "#ffd23f" : "#fff6d8";
-  c.beginPath();
-  c.ellipse(0, 0, 4.6, 6.2, 0, 0, TAU);
-  c.fill();
-  c.fillStyle = "#ffa33f";
-  c.beginPath();
-  c.arc(1.6, -1.6, 1, 0, TAU);
-  c.fill();
-  c.restore();
-  hintText(
-    c,
-    "×" + eggn + "/" + LEVELS.length + (eggFull ? " ✓" : ""),
-    278,
-    26,
-    "bold 18px " + FONT,
-    eggFull ? "#ffd23f" : "#fff",
-    "left",
-  );
+  hintText(c, "×" + GS.coins, 140, 26, "bold 18px " + FONT, "#fff", "left");
+  hintText(c, ("0000000" + GS.score).slice(-7), 200, 26, "bold 18px " + FONT, "#ffd23f", "left");
+  /* 关卡名 + 版本 */
   c.textAlign = "center";
   hintText(c, curLV ? curLV.name : "", W / 2, 16, "14px " + FONT, "rgba(255,255,255,0.95)", "center");
   hintText(
     c,
-    VER + " · " + (GS.hs > 0 ? "最高 " + GS.hs : "牛来大冒险"),
+    VER + " · " + (GS.hs > 0 ? "最高 " + GS.hs : "I Wanna Be The Ox"),
     W / 2,
     34,
     "11px " + FONT,
     "rgba(160,220,255,0.95)",
     "center",
   );
+  /* 旅途进度条:全程一把尺,存档点画青色刻度,牛头是当前位置 */
+  if (curLV) {
+    var bw = 300,
+      bx = (W - bw) / 2,
+      by = 46;
+    c.fillStyle = "rgba(8,10,20,0.55)";
+    rr(c, bx - 3, by - 3, bw + 6, 8, 4);
+    c.fill();
+    c.fillStyle = "rgba(255,255,255,0.25)";
+    c.fillRect(bx, by, bw, 2);
+    for (var si = 0; si < savesEnt.length; si++) {
+      var stx = bx + clamp(savesEnt[si].x / (curLV.w * T), 0, 1) * bw;
+      c.fillStyle = savesEnt[si].taken || GS.checkpointX >= savesEnt[si].x - T / 2 ? "#7dff9a" : "#6ae0ff";
+      c.fillRect(stx - 1.5, by - 3, 3, 8);
+    }
+    var px = bx + clamp((PL.x + PL.w / 2) / (curLV.w * T), 0, 1) * bw;
+    c.fillStyle = "#ffd23f";
+    c.beginPath();
+    c.arc(px, by + 1, 4, 0, TAU);
+    c.fill();
+  }
   c.textAlign = "right";
   hintText(
     c,
-    "" + Math.max(0, Math.floor(GS.time)),
+    muted ? "M 静音 · R 回存档点" : "R 回存档点",
     W - 20,
-    25,
-    "bold 24px " + FONT,
-    GS.time < 30 ? "#ff5a5a" : "#fff",
+    42,
+    "10px " + FONT,
+    "rgba(255,255,255,0.75)",
     "right",
-  );
-  hintText(c, "TIME", W - 20, 42, "10px " + FONT, "rgba(255,255,255,0.8)", "right");
-  if (muted) {
-    hintText(c, "MUTE", W - 72, 42, "10px " + FONT, "rgba(255,120,120,0.95)", "right");
-  }
-  /*
-   * AI 状态钮在画布内，因此桌面和手机都能点到；手机的实体触控键仍只
-   * 负责移动/动作，不会盖住这个 HUD 热区。
-   */
-  AI_UI.x = W - 206;
-  AI_UI.y = 62;
-  AI_UI.w = 182;
-  AI_UI.h = 34;
-  c.save();
-  rr(c, AI_UI.x, AI_UI.y, AI_UI.w, AI_UI.h, 10);
-  c.fillStyle = AI.enabled ? "rgba(70,174,230,0.88)" : "rgba(18,28,48,0.8)";
-  c.fill();
-  c.strokeStyle = AI.enabled ? "#b8eeff" : "rgba(180,210,255,0.55)";
-  c.lineWidth = 1.3;
-  c.stroke();
-  c.textAlign = "center";
-  c.fillStyle = AI.enabled ? "#07121f" : "#d8edff";
-  c.font = "bold 12px " + FONT;
-  c.fillText(AI.enabled ? "AI · " + AI.status : "AI 读障起跳 · I", AI_UI.x + AI_UI.w / 2, AI_UI.y + 18);
-  c.restore();
-  c.textAlign = "left";
-  hintText(
-    c,
-
-    16,
-    H - 12,
-    "11px " + FONT,
-    "rgba(255,255,255,0.85)",
-    "left",
   );
   /* 空中连击 */
   if ((GS.combo || 0) >= 2 && (GS.state === "play" || GS.state === "bossintro")) {
     c.textAlign = "center";
-    c.font = "bold 22px " + FONT;
     hintText(
       c,
       "COMBO x" + GS.combo,
@@ -5977,22 +4683,22 @@ function drawHUD2D(c) {
   }
   /* Anthropic Dario 血条 */
   if (GS.boss && (GS.state === "play" || GS.state === "bossintro") && !GS.boss.dead) {
-    var bw = 320,
-      bx = (W - bw) / 2;
+    var bw2 = 320,
+      bx2 = (W - bw2) / 2;
     c.fillStyle = "rgba(0,0,0,0.5)";
-    c.fillRect(bx - 3, H - 36, bw + 6, 20);
+    c.fillRect(bx2 - 3, H - 36, bw2 + 6, 20);
     c.fillStyle = "#3a2020";
-    c.fillRect(bx, H - 31, bw, 12);
+    c.fillRect(bx2, H - 31, bw2, 12);
     var frac = Math.max(0, GS.boss.hp / GS.boss.maxhp);
-    var grd = c.createLinearGradient(bx, 0, bx + bw, 0);
+    var grd = c.createLinearGradient(bx2, 0, bx2 + bw2, 0);
     grd.addColorStop(0, "#ff5a5a");
     grd.addColorStop(1, "#ffb03f");
     c.fillStyle = grd;
-    c.fillRect(bx, H - 31, bw * frac, 12);
+    c.fillRect(bx2, H - 31, bw2 * frac, 12);
     hintText(
       c,
       "Anthropic Dario" + (GS.boss.phase === 3 ? " · 数据洪流" : GS.boss.phase === 2 ? " · 封号模式" : ""),
-      bx,
+      bx2,
       H - 42,
       "bold 12px " + FONT,
       "#fff",
@@ -6008,21 +4714,43 @@ function drawHUD2D(c) {
     }
   }
   if (mb && GS.state === "play" && Math.abs(mb.x - PL.x) < 560) {
-    var bw2 = 180,
-      bx2 = (W - bw2) / 2;
+    var bw3 = 180,
+      bx3 = (W - bw3) / 2;
     c.fillStyle = "rgba(0,0,0,0.45)";
-    c.fillRect(bx2 - 2, H - 30, bw2 + 4, 14);
+    c.fillRect(bx3 - 2, H - 30, bw3 + 4, 14);
     c.fillStyle = "#3a2030";
-    c.fillRect(bx2, H - 26, bw2, 8);
+    c.fillRect(bx3, H - 26, bw3, 8);
     var fr2 = Math.max(0, mb.hp / mb.maxhp);
     c.fillStyle = "#c05aff";
-    c.fillRect(bx2, H - 26, bw2 * fr2, 8);
-    hintText(c, "GPT 老板", bx2, H - 38, "bold 10px " + FONT, "#fff", "left");
+    c.fillRect(bx3, H - 26, bw3 * fr2, 8);
+    hintText(c, "GPT 老板", bx3, H - 38, "bold 10px " + FONT, "#fff", "left");
   }
 }
 
 /* ==================== 主渲染 ==================== */
+/*
+ * HiDPI 清晰度:逻辑分辨率固定 960x600,物理分辨率乘设备像素比。
+ * 2D 画布和 Three.js 画布都按 DPR 渲染再 1:1 贴回,
+ * 高分屏上文字和模型边缘不再发糊;窗口缩放时每帧自动跟随。
+ */
+var DPR = 1;
+function applyDPR() {
+  DPR = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+  var pw = Math.round(W * DPR),
+    ph = Math.round(H * DPR);
+  if (cv.width !== pw || cv.height !== ph) {
+    cv.width = pw;
+    cv.height = ph;
+  }
+  if (THREE_OK && renderer) {
+    renderer.setPixelRatio(DPR);
+    renderer.setSize(W, H);
+  }
+}
 function render() {
+  var wantDPR = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+  if (wantDPR !== DPR || cv.width !== Math.round(W * wantDPR)) applyDPR();
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.clearRect(0, 0, W, H);
   drawBG2D(ctx);
   if (!THREE_OK) {
@@ -6032,9 +4760,9 @@ function render() {
   updateCamera();
   sync3D();
   renderer.render(scene, camera);
-  ctx.drawImage(cv3d, 0, 0);
+  ctx.drawImage(cv3d, 0, 0, W, H);
   drawFX2D();
-  if (GS.state !== "title" && GS.state !== "select" && GS.state !== "gameover" && GS.state !== "win") drawHUD2D(ctx);
+  if (GS.state !== "title" && GS.state !== "win") drawHUD2D(ctx);
   drawOverlays(ctx);
 }
 function drawNoWebGL() {
@@ -6049,33 +4777,6 @@ function drawNoWebGL() {
   ctx.fillText("请使用较新的 Chrome / Edge / Firefox / Safari", W / 2, H / 2 + 10);
 }
 function drawFX2D() {
-  if (AI.enabled && curLV && GS.state === "play" && (AI.aimX || AI.landingX)) {
-    var fromX = PL.x + PL.w / 2 - camX;
-    var fromY = PL.y + PL.h;
-    var toX = (AI.landingX || AI.aimX) - camX;
-    var toY = AI.landingY || AI.aimY || fromY;
-    var midX = (fromX + toX) / 2;
-    var midY = Math.min(fromY, toY) - 64;
-    ctx.save();
-    ctx.globalAlpha = 0.82;
-    ctx.strokeStyle = "#92efff";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([7, 6]);
-    ctx.lineDashOffset = -GT * 80;
-    ctx.beginPath();
-    ctx.moveTo(fromX, fromY);
-    ctx.quadraticCurveTo(midX, midY, toX, toY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = "#d4fbff";
-    ctx.font = "bold 10px " + FONT;
-    ctx.textAlign = "center";
-    ctx.fillText("落点", toX, toY - 10);
-    ctx.beginPath();
-    ctx.arc(toX, toY, 4, 0, TAU);
-    ctx.fill();
-    ctx.restore();
-  }
   if (!THREE_OK) {
     for (var sq = 0; sq < shots.length; sq++) {
       var sh = shots[sq];
@@ -6145,11 +4846,7 @@ function drawOverlays(c) {
     c.fillStyle = "#fff";
     c.font = "16px " + FONT;
     var introProfile = curLV.profile || {};
-    c.fillText(
-      GS.li === FINAL_LV ? "克劳德机房就在前面——让服务器冒烟!" : introProfile.challenge || "冲呀——小心 GPT 老板守关!",
-      W / 2,
-      326,
-    );
+    c.fillText(introProfile.challenge || "冲呀——小心 GPT 老板守关!", W / 2, 326);
     c.fillStyle = "rgba(255,255,255,0.72)";
     c.font = "13px " + FONT;
     c.fillText(introProfile.tip || "观察一次，再漂亮地通过。", W / 2, 350);
@@ -6195,7 +4892,6 @@ function drawOverlays(c) {
     c.fillText("Anthropic 服务器集群开始冒烟了!", W / 2, 260);
   }
   if (GS.state === "title") drawTitle2D(c);
-  else if (GS.state === "select") drawSelect2D(c);
   else if (GS.state === "pause") {
     c.fillStyle = "rgba(0,0,0,0.5)";
     c.fillRect(0, 0, W, H);
@@ -6205,9 +4901,7 @@ function drawOverlays(c) {
     c.textBaseline = "middle";
     c.fillText("已暂停", W / 2, H / 2 - 16);
     c.font = "16px " + FONT;
-    c.fillText("按 P 继续 · 按 Esc 退回选关", W / 2, H / 2 + 22);
-  } else if (GS.state === "gameover") {
-    drawOver2D(c);
+    c.fillText("按 P 继续 · 按 R 回存档点 · 按 Esc 返回标题", W / 2, H / 2 + 22);
   } else if (GS.state === "win") {
     drawWin2D(c);
   }
@@ -6242,16 +4936,14 @@ function drawTitle2D(c) {
     c.fillText("牛来大冒险", txx, 140);
     c.fillStyle = "#8ecbff";
     c.font = "bold 30px " + FONT;
-    c.fillText("Ox is Coming", txx, 196);
+    c.fillText("I Wanna Be The Ox", txx, 196);
     c.fillStyle = "rgba(255,255,255,0.75)";
     c.font = "15px " + FONT;
-    c.fillText("3D · 手工建模 · 一车牛来了", txx, 238);
-    c.fillStyle = "#fff";
-    c.font = "bold 19px " + FONT;
-    hintText(c, "点击 / Enter 选关开始", W / 2, 392 + bob * 0.4, "bold 19px " + FONT, "#fff", "center");
+    c.fillText("一图到底 · 即死跳刺 · 存档点重生", txx, 238);
+    hintText(c, "点击 / Enter 开始挑战", W / 2, 392 + bob * 0.4, "bold 20px " + FONT, "#fff", "center");
     hintText(
       c,
-      "←→/AD 移动 · 空格跳 · Shift 冲刺 · 空中↓坐地重击 · Boss战时自动开火",
+      "←→/AD 移动 · 空格跳 · Shift 冲刺 · 空中↓坐地重击 · 贴墙跳=蹬墙跳",
       W / 2,
       424,
       "14px " + FONT,
@@ -6260,7 +4952,7 @@ function drawTitle2D(c) {
     );
     hintText(
       c,
-      "空中连踩出 COMBO · 全速冲刺撞飞 · 贴墙跳=蹬墙跳",
+      "碰到存档水晶=存档 · 死亡从存档点重来 · Boss战自动开火",
       W / 2,
       448,
       "14px " + FONT,
@@ -6270,16 +4962,8 @@ function drawTitle2D(c) {
     if (GS.hs > 0) {
       hintText(c, "最高分 " + GS.hs, W / 2, 478, "14px " + FONT, "#ffd23f", "center");
     }
-    if (eggFullBadge()) {
-      hintText(
-        c,
-        "🥚 金蛋大满贯 · " + eggCount() + "/" + LEVELS.length + " 全图 GET!",
-        W / 2,
-        502,
-        "14px " + FONT,
-        "#ffd23f",
-        "center",
-      );
+    if (GS.deathsAll > 0) {
+      hintText(c, "累计死亡 " + GS.deathsAll + " 次", W / 2, 502, "14px " + FONT, "#ff8a8a", "center");
     }
   } else {
     c.fillStyle = "#ffd23f";
@@ -6290,10 +4974,8 @@ function drawTitle2D(c) {
     c.fillText("牛 来 大 冒 险", W / 2, 150 + bob);
     c.fillStyle = "#8ecbff";
     c.font = "bold 34px " + FONT;
-    c.fillText("Ox is Coming", W / 2, 210 + bob);
-    c.fillStyle = "#fff";
-    c.font = "bold 20px " + FONT;
-    hintText(c, "点击 / Enter 选关开始", W / 2, 330, "bold 20px " + FONT, "#fff", "center");
+    c.fillText("I Wanna Be The Ox", W / 2, 210 + bob);
+    hintText(c, "点击 / Enter 开始挑战", W / 2, 330, "bold 20px " + FONT, "#fff", "center");
     if (GS.hs > 0) {
       hintText(c, "最高分 " + GS.hs, W / 2, 392, "14px " + FONT, "#ffd23f", "center");
     }
@@ -6416,405 +5098,6 @@ function drawTitle2D(c) {
   c.restore();
   c.restore();
 }
-var SEL_PAGE_SIZE = 10;
-function setSelectHit(box, x, y, w, h) {
-  box.x = x;
-  box.y = y;
-  box.w = w;
-  box.h = h;
-}
-function hitSelectBox(mx, my, box) {
-  return mx >= box.x && mx <= box.x + box.w && my >= box.y && my <= box.y + box.h;
-}
-function selPageStart() {
-  return Math.floor(GS.selIdx / SEL_PAGE_SIZE) * SEL_PAGE_SIZE;
-}
-function selCellAt(mx, my) {
-  for (var i = 0; i < SEL_UI.nodes.length; i++) {
-    var node = SEL_UI.nodes[i];
-    if (hitSelectBox(mx, my, node)) return node.level;
-  }
-  return -1;
-}
-function hasAnyLevelScore() {
-  for (var i = 0; i < LEVELS.length; i++) {
-    try {
-      if ((localStorage.getItem("niu_best_lv" + i) || "0") !== "0") return true;
-    } catch (e) {}
-  }
-  return false;
-}
-function levelProgressLabel(i) {
-  var best = 0;
-  try {
-    best = parseInt(localStorage.getItem("niu_best_lv" + i) || "0", 10) || 0;
-  } catch (e) {}
-  var labels = [];
-  if (best > 0) labels.push("最佳 " + best);
-  if (isCleared(i)) labels.push("已通关");
-  if (isEggGot(i)) labels.push("金蛋");
-  return labels.length ? labels.join(" · ") : "尚未挑战";
-}
-function drawSelectMotif(c, motif, x, y, size, col) {
-  var h = size * 0.5;
-  c.save();
-  c.translate(x, y);
-  c.lineCap = "round";
-  c.lineJoin = "round";
-  c.strokeStyle = col;
-  c.fillStyle = col;
-  c.lineWidth = 4;
-  if (motif === "spike") {
-    for (var si = 0; si < 4; si++) {
-      var sx = -h + si * ((size * 0.82) / 3);
-      c.beginPath();
-      c.moveTo(sx, h * 0.55);
-      c.lineTo(sx + size * 0.13, -h * 0.6);
-      c.lineTo(sx + size * 0.26, h * 0.55);
-      c.closePath();
-      c.fill();
-    }
-    c.globalAlpha = 0.25;
-    c.fillRect(-h, h * 0.55, size, 8);
-  } else if (motif === "cannon") {
-    c.fillRect(-h * 0.88, h * 0.25, size * 0.72, h * 0.28);
-    c.beginPath();
-    c.arc(-h * 0.28, h * 0.4, h * 0.38, 0, TAU);
-    c.fill();
-    c.lineWidth = 13;
-    c.beginPath();
-    c.moveTo(-h * 0.02, h * 0.2);
-    c.lineTo(h * 0.82, -h * 0.35);
-    c.stroke();
-    c.fillStyle = "#fff5cf";
-    c.beginPath();
-    c.arc(h * 0.88, -h * 0.39, 7, 0, TAU);
-    c.fill();
-  } else if (motif === "plank") {
-    for (var pi = 0; pi < 3; pi++) {
-      var py = (pi % 2 ? -h * 0.18 : h * 0.26) + pi * -5;
-      c.fillRect(-h + pi * h * 0.74, py, h * 0.54, 10);
-      c.globalAlpha = 0.42;
-      c.fillRect(-h + pi * h * 0.74, py + 15, h * 0.54, 6);
-      c.globalAlpha = 1;
-    }
-    c.setLineDash([6, 7]);
-    c.beginPath();
-    c.moveTo(-h, h * 0.65);
-    c.lineTo(h, h * 0.65);
-    c.stroke();
-  } else if (motif === "lava") {
-    c.globalAlpha = 0.3;
-    c.fillRect(-h, -h * 0.7, size, size * 1.35);
-    c.globalAlpha = 1;
-    c.lineWidth = 6;
-    for (var li = 0; li < 3; li++) {
-      c.beginPath();
-      c.moveTo(-h, -h * 0.36 + li * 24);
-      c.quadraticCurveTo(-h * 0.45, -h * 0.72 + li * 24, 0, -h * 0.36 + li * 24);
-      c.quadraticCurveTo(h * 0.45, 0 + li * 24, h, -h * 0.36 + li * 24);
-      c.stroke();
-    }
-  } else if (motif === "tower") {
-    for (var ti = 0; ti < 4; ti++) {
-      var th = 24 + ti * 16;
-      c.globalAlpha = 0.3 + ti * 0.16;
-      c.fillRect(-h + ti * 24, h - th, 18, th);
-    }
-    c.globalAlpha = 1;
-    c.beginPath();
-    c.moveTo(-h * 0.78, h * 0.56);
-    c.lineTo(-h * 0.2, h * 0.05);
-    c.lineTo(h * 0.18, -h * 0.35);
-    c.lineTo(h * 0.78, -h * 0.75);
-    c.stroke();
-  } else if (motif === "move") {
-    c.fillRect(-h, h * 0.36, h * 0.72, 12);
-    c.fillRect(h * 0.08, -h * 0.38, h * 0.72, 12);
-    c.lineWidth = 4;
-    c.beginPath();
-    c.moveTo(-h * 0.28, h * 0.05);
-    c.lineTo(h * 0.45, h * 0.05);
-    c.moveTo(h * 0.24, -8);
-    c.lineTo(h * 0.45, h * 0.05);
-    c.lineTo(h * 0.24, 18);
-    c.stroke();
-  } else if (motif === "crumble") {
-    c.globalAlpha = 0.3;
-    c.fillRect(-h, -h * 0.55, size, h * 1.1);
-    c.globalAlpha = 1;
-    c.strokeRect(-h, -h * 0.55, size, h * 1.1);
-    c.beginPath();
-    c.moveTo(-h * 0.48, -h * 0.5);
-    c.lineTo(-h * 0.08, -4);
-    c.lineTo(-h * 0.28, h * 0.43);
-    c.moveTo(h * 0.38, -h * 0.5);
-    c.lineTo(h * 0.08, 2);
-    c.lineTo(h * 0.42, h * 0.48);
-    c.stroke();
-  } else if (motif === "dash") {
-    c.lineWidth = 12;
-    for (var di = 0; di < 3; di++) {
-      var dx = -h + di * h * 0.67;
-      c.globalAlpha = 0.35 + di * 0.25;
-      c.beginPath();
-      c.moveTo(dx, -h * 0.55);
-      c.lineTo(dx + h * 0.42, 0);
-      c.lineTo(dx, h * 0.55);
-      c.stroke();
-    }
-  } else {
-    c.globalAlpha = 0.24;
-    c.beginPath();
-    c.arc(0, 0, h * 0.84, 0, TAU);
-    c.fill();
-    c.globalAlpha = 1;
-    c.lineWidth = 5;
-    c.beginPath();
-    c.arc(0, 0, h * 0.52, 0, TAU);
-    c.stroke();
-    for (var bi = 0; bi < 4; bi++) {
-      var ba = (TAU * bi) / 4 + GT * 0.7;
-      c.fillRect(Math.cos(ba) * h * 0.84 - 5, Math.sin(ba) * h * 0.84 - 5, 10, 10);
-    }
-  }
-  c.restore();
-}
-function drawSelectArrow(c, box, left, col) {
-  rr(c, box.x, box.y, box.w, box.h, 16);
-  c.fillStyle = "rgba(9,12,25,0.78)";
-  c.fill();
-  c.strokeStyle = col;
-  c.lineWidth = 2.5;
-  c.stroke();
-  c.strokeStyle = "#fff";
-  c.lineWidth = 5;
-  c.lineCap = "round";
-  c.beginPath();
-  var cx = box.x + box.w / 2,
-    cy = box.y + box.h / 2;
-  c.moveTo(cx + (left ? 9 : -9), cy - 14);
-  c.lineTo(cx + (left ? -9 : 9), cy);
-  c.lineTo(cx + (left ? 9 : -9), cy + 14);
-  c.stroke();
-}
-function drawSelect2D(c) {
-  var worldCol = ["#59c14d", "#efc06e", "#8ab4ef", "#ff7a5a", "#9aa0b8", "#c08aff", "#ffb84d", "#ff6a50"];
-  var lv = LEVELS[GS.selIdx];
-  var profile = lv.profile || {};
-  var col = worldCol[lv.theme] || "#8ab4ef";
-  var total = LEVELS.length;
-  CLR.x = -1;
-  CLR.y = -1;
-  SEL_UI.nodes = [];
-  setSelectHit(SEL_UI.prev, -1, -1, 0, 0);
-  setSelectHit(SEL_UI.next, -1, -1, 0, 0);
-  setSelectHit(SEL_UI.start, -1, -1, 0, 0);
-  setSelectHit(SEL_UI.ai, -1, -1, 0, 0);
-  c.fillStyle = "rgba(5,6,15,0.58)";
-  c.fillRect(0, 0, W, H);
-  c.textAlign = "center";
-  c.textBaseline = "middle";
-  c.fillStyle = "#ffd23f";
-  c.font = "bold 34px " + FONT;
-  c.fillText("选 关 · 挑一关开跳", W / 2, 48);
-  c.fillStyle = "rgba(255,255,255,0.7)";
-  c.font = "14px " + FONT;
-  c.fillText("先看关卡性格，再决定怎么死得漂亮。AI 会读取障碍并自动试跑。", W / 2, 78);
-
-  var cardX = 120,
-    cardY = 108,
-    cardW = 720,
-    cardH = 294;
-  var cg = c.createLinearGradient(cardX, cardY, cardX + cardW, cardY + cardH);
-  cg.addColorStop(0, "rgba(10,15,32,0.96)");
-  cg.addColorStop(0.55, "rgba(21,18,43,0.94)");
-  cg.addColorStop(1, "rgba(10,12,26,0.96)");
-  rr(c, cardX, cardY, cardW, cardH, 24);
-  c.fillStyle = cg;
-  c.fill();
-  c.strokeStyle = col;
-  c.lineWidth = 2.5;
-  c.stroke();
-  rr(c, cardX + 16, cardY + 16, 182, cardH - 32, 18);
-  c.fillStyle = "rgba(255,255,255,0.055)";
-  c.fill();
-  c.strokeStyle = "rgba(255,255,255,0.16)";
-  c.lineWidth = 1;
-  c.stroke();
-  c.globalAlpha = 0.16;
-  c.fillStyle = col;
-  c.beginPath();
-  c.arc(cardX + 107, cardY + 142, 76, 0, TAU);
-  c.fill();
-  c.globalAlpha = 1;
-  drawSelectMotif(c, profile.motif, cardX + 107, cardY + 151, 128, col);
-  c.fillStyle = "#fff";
-  c.font = "bold 48px " + FONT;
-  c.fillText(profile.icon || "!", cardX + 107, cardY + 254);
-
-  c.textAlign = "left";
-  c.fillStyle = col;
-  c.font = "bold 14px " + FONT;
-  c.fillText(
-    "WORLD " + String(GS.selIdx + 1).padStart(2, "0") + " / " + String(total).padStart(2, "0"),
-    cardX + 226,
-    cardY + 42,
-  );
-  if (profile.provider) {
-    c.textAlign = "right";
-    c.fillStyle = "rgba(205,230,255,0.88)";
-    c.font = "bold 12px " + FONT;
-    c.fillText(profile.provider, cardX + cardW - 28, cardY + 42);
-    c.textAlign = "left";
-  }
-  c.fillStyle = "#fff";
-  c.font = "bold 31px " + FONT;
-  c.fillText(lv.name, cardX + 226, cardY + 83);
-  c.fillStyle = "#ffd23f";
-  c.font = "bold 23px " + FONT;
-  c.fillText(profile.title || "未知试炼", cardX + 226, cardY + 122);
-  c.fillStyle = "rgba(230,238,255,0.86)";
-  c.font = "16px " + FONT;
-  c.fillText(profile.challenge || "观察路线", cardX + 226, cardY + 154);
-  c.fillStyle = "rgba(255,255,255,0.57)";
-  c.font = "13px " + FONT;
-  c.fillText(profile.background || "独特远景正在生成。", cardX + 226, cardY + 183);
-  var aliases = profile.aliases || [];
-  var alias = aliases.length ? aliases[Math.floor(GT / 2.4) % aliases.length] : profile.tip || "先观察，再起跳。";
-  c.fillText("梗名 · " + alias, cardX + 226, cardY + 205);
-  c.fillStyle = col;
-  c.font = "bold 14px " + FONT;
-  c.fillText("难度  " + "★".repeat(profile.difficulty || 1), cardX + 226, cardY + 235);
-  c.fillStyle = isCleared(GS.selIdx) ? "#8aff5a" : isEggGot(GS.selIdx) ? "#fff1a8" : "rgba(255,255,255,0.55)";
-  c.font = "14px " + FONT;
-  c.fillText(levelProgressLabel(GS.selIdx), cardX + 226, cardY + 262);
-
-  var aiX = cardX + 226,
-    aiY = cardY + 216,
-    aiW = 166,
-    aiH = 58;
-  var startX = cardX + 414,
-    startY = cardY + 216,
-    startW = 276,
-    startH = 58;
-  setSelectHit(SEL_UI.ai, aiX, aiY, aiW, aiH);
-  rr(c, aiX, aiY, aiW, aiH, 16);
-  c.fillStyle = AI.enabled ? "rgba(76,180,232,0.94)" : "rgba(15,31,54,0.95)";
-  c.fill();
-  c.strokeStyle = AI.enabled ? "#c7f3ff" : "rgba(156,211,255,0.76)";
-  c.lineWidth = 1.5;
-  c.stroke();
-  c.textAlign = "center";
-  c.fillStyle = AI.enabled ? "#081925" : "#cceeff";
-  c.font = "bold 16px " + FONT;
-  c.fillText(AI.enabled ? "AI 已接管" : "AI 路线演示", aiX + aiW / 2, aiY + 24);
-  c.font = "11px " + FONT;
-  c.fillText(AI.enabled ? "读障碍起跳 · 点此切回手动" : "点此启动智能通关", aiX + aiW / 2, aiY + 43);
-  setSelectHit(SEL_UI.start, startX, startY, startW, startH);
-  rr(c, startX, startY, startW, startH, 16);
-  c.fillStyle = isUnlocked(GS.selIdx) ? "#ffd23f" : "#4a4c56";
-  c.fill();
-  c.strokeStyle = "rgba(255,255,255,0.75)";
-  c.lineWidth = 1.5;
-  c.stroke();
-  c.textAlign = "center";
-  c.fillStyle = "#281600";
-  c.font = "bold 22px " + FONT;
-  c.fillText(
-    isUnlocked(GS.selIdx) ? (AI.enabled ? "AI 自动挑战  ▶" : "开始挑战  ▶") : "尚未解锁",
-    startX + startW / 2,
-    startY + startH / 2 + 1,
-  );
-
-  var pageStart = selPageStart();
-  var count = Math.min(SEL_PAGE_SIZE, total - pageStart);
-  var nodeGap = 8;
-  var nodeW = Math.min(76, (700 - nodeGap * (count - 1)) / Math.max(1, count));
-  var nodeH = 60;
-  var nodeTotal = nodeW * count + nodeGap * (count - 1);
-  var nodeX0 = (W - nodeTotal) / 2;
-  var nodeY = 432;
-  setSelectHit(SEL_UI.prev, 42, nodeY, 64, nodeH);
-  setSelectHit(SEL_UI.next, W - 106, nodeY, 64, nodeH);
-  drawSelectArrow(c, SEL_UI.prev, true, col);
-  drawSelectArrow(c, SEL_UI.next, false, col);
-  for (var ni = 0; ni < count; ni++) {
-    var idx = pageStart + ni;
-    var nx = nodeX0 + ni * (nodeW + nodeGap);
-    var selected = idx === GS.selIdx;
-    var node = { x: nx, y: nodeY, w: nodeW, h: nodeH, level: idx };
-    SEL_UI.nodes.push(node);
-    rr(c, nx, nodeY, nodeW, nodeH, 12);
-    c.fillStyle = selected ? "rgba(255,210,63,0.26)" : "rgba(8,12,26,0.74)";
-    c.fill();
-    c.strokeStyle = selected ? "#ffd23f" : worldCol[LEVELS[idx].theme] || "#8ab4ef";
-    c.lineWidth = selected ? 2.8 : 1.25;
-    c.stroke();
-    c.fillStyle = selected ? "#ffd23f" : "#fff";
-    c.font = "bold 18px " + FONT;
-    c.textAlign = "center";
-    c.fillText(String(idx + 1), nx + nodeW / 2, nodeY + 24);
-    c.fillStyle = isCleared(idx) ? "#8aff5a" : isEggGot(idx) ? "#fff1a8" : "rgba(255,255,255,0.45)";
-    c.font = "bold 11px " + FONT;
-    c.fillText(isCleared(idx) ? "✓" : isEggGot(idx) ? "蛋" : LEVELS[idx].profile.icon, nx + nodeW / 2, nodeY + 45);
-  }
-  c.fillStyle = "rgba(255,255,255,0.6)";
-  c.font = "12px " + FONT;
-  c.fillText(
-    total > SEL_PAGE_SIZE
-      ? "第 " + (pageStart + 1) + "–" + (pageStart + count) + " 关 · 点编号选关"
-      : "点编号选关 · 点挑战按钮开跳",
-    W / 2,
-    414,
-  );
-  c.fillStyle = "rgba(255,255,255,0.52)";
-  c.font = "12px " + FONT;
-  c.fillText("← → 切关 · ↑ ↓ 快速跳转 · I 切换 AI · Enter 开始 · Esc 返回", W / 2, H - 22);
-
-  if (GS.hs > 0 || hasAnyLevelScore()) {
-    CLR.x = W - 148;
-    CLR.y = 18;
-    CLR.w = 128;
-    CLR.h = 34;
-    rr(c, CLR.x, CLR.y, CLR.w, CLR.h, 10);
-    c.fillStyle = "rgba(20,16,34,0.88)";
-    c.fill();
-    c.strokeStyle = "#ff6a6a";
-    c.lineWidth = 1.5;
-    c.stroke();
-    c.fillStyle = "#ff9a9a";
-    c.font = "bold 13px " + FONT;
-    c.fillText("清空成绩", CLR.x + CLR.w / 2, CLR.y + CLR.h / 2 + 1);
-  }
-}
-function drawOver2D(c) {
-  c.fillStyle = "rgba(10,5,5,0.72)";
-  c.fillRect(0, 0, W, H);
-  c.fillStyle = "#ff5a5a";
-  c.font = "bold 58px " + FONT;
-  c.textAlign = "center";
-  c.textBaseline = "middle";
-  c.fillText("牛来倒下了…", W / 2, H / 2 - 70);
-  if (GS.boss && GS.boss.dead) {
-    /* noop */
-  }
-  c.fillStyle = "#ffd23f";
-  c.font = "bold 26px " + FONT;
-  c.fillText("你被封号了！！", W / 2, H / 2 - 30);
-  c.fillStyle = "#fff";
-  c.font = "20px " + FONT;
-  c.fillText("得分 " + GS.score + " · 金币 " + GS.coins + " · 最高连击 x" + GS.bestCombo, W / 2, H / 2 + 2);
-  c.fillStyle = "rgba(255,255,255,0.6)";
-  c.font = "15px " + FONT;
-  c.fillText("金币 " + GS.sCoin + " + 击杀 " + GS.sKill + " + 奖励 " + GS.sBonus, W / 2, H / 2 + 32);
-  c.fillStyle = eggFullBadge() ? "#ffd23f" : "rgba(255,255,255,0.75)";
-  c.font = "15px " + FONT;
-  c.fillText("金蛋 x" + eggCount() + "/" + LEVELS.length + (eggFullBadge() ? " · 大满贯!" : ""), W / 2, H / 2 + 54);
-  c.fillStyle = "#ffd23f";
-  c.font = "bold 22px " + FONT;
-  c.fillText("按 Enter / 点击 返回标题", W / 2, H / 2 + 84);
-}
 function drawWin2D(c) {
   c.fillStyle = "rgba(8,8,20,0.72)";
   c.fillRect(0, 0, W, H);
@@ -6822,28 +5105,25 @@ function drawWin2D(c) {
   c.font = "bold 58px " + FONT;
   c.textAlign = "center";
   c.textBaseline = "middle";
-  c.fillText("通关!!! Ox has Come!", W / 2, H / 2 - 90);
+  c.fillText("通关!!! Ox is The Guy!", W / 2, H / 2 - 90);
   c.fillStyle = "#fff";
   c.font = "20px " + FONT;
   c.fillText("最终得分 " + GS.score + " · 金币 " + GS.coins + " · 最高连击 x" + GS.bestCombo, W / 2, H / 2 - 24);
+  c.fillStyle = "#ff8a8a";
+  c.font = "bold 22px " + FONT;
+  c.fillText("本次死亡 " + GS.deaths + " 次" + (GS.deaths === 0 ? " · 一命通关?!" : ""), W / 2, H / 2 + 8);
   c.fillStyle = "rgba(255,255,255,0.65)";
   c.font = "15px " + FONT;
-  c.fillText("积分榜:金币 " + GS.sCoin + " + 击杀 " + GS.sKill + " + 奖励 " + GS.sBonus, W / 2, H / 2 + 6);
+  c.fillText("累计死亡 " + GS.deathsAll + " 次 · 最高分 " + GS.hs, W / 2, H / 2 + 36);
   c.fillStyle = "rgba(160,220,255,0.9)";
   c.font = "16px " + FONT;
-  c.fillText("克劳德机房服务器集群冒烟,牛来从过热警报中凯旋。谢谢玩!", W / 2, H / 2 + 16);
-  c.fillStyle = eggFullBadge() ? "#ffd23f" : "rgba(255,255,255,0.7)";
-  c.font = "14px " + FONT;
-  c.fillText("金蛋 x" + eggCount() + "/" + LEVELS.length + (eggFullBadge() ? " · 🥚 大满贯!" : ""), W / 2, H / 2 + 38);
-  c.fillStyle = "rgba(255,255,255,0.7)";
-  c.font = "14px " + FONT;
-  c.fillText("最高分 " + GS.hs, W / 2, H / 2 + 62);
+  c.fillText("Dario 的机房冒烟了,牛来踩着存档水晶凯旋。谢谢玩!", W / 2, H / 2 + 62);
   c.fillStyle = "rgba(110,168,255,0.85)";
   c.font = "13px " + FONT;
-  c.fillText("★ github.com/MCapricorns/niu-lai-3d · 点赞收藏", W / 2, H / 2 + 78);
+  c.fillText("★ github.com/MCapricorns/niu-lai-3d · 点赞收藏", W / 2, H / 2 + 84);
   c.fillStyle = "#ffd23f";
   c.font = "bold 22px " + FONT;
-  c.fillText("按 Enter / 点击 返回标题", W / 2, H / 2 + 110);
+  c.fillText("按 Enter / 点击 返回标题", W / 2, H / 2 + 116);
 }
 
 /* ==================== 主循环 ==================== */
@@ -6877,61 +5157,19 @@ var _errMsg = "";
 cv.addEventListener("pointerdown", function (e) {
   initAU();
   if (AC && AC.state === "suspended") AC.resume();
-  var r = cv.getBoundingClientRect();
-  var mx = ((e.clientX - r.left) * W) / r.width,
-    my = ((e.clientY - r.top) * H) / r.height;
-  if (GS.state === "title" && mx >= GH.x && mx <= GH.x + GH.w && my >= GH.y && my <= GH.y + GH.h) {
-    try {
-      window.open("https://github.com/MCapricorns/niu-lai-3d", "_blank");
-    } catch (err) {}
-    sClick();
-    return;
-  }
   if (GS.state === "title") {
-    GS.state = "select";
-    makeSky();
-    sClick();
-  } else if (GS.state === "select") {
-    if (mx >= CLR.x && mx <= CLR.x + CLR.w && my >= CLR.y && my <= CLR.y + CLR.h) {
+    var r = cv.getBoundingClientRect();
+    var mx = ((e.clientX - r.left) * W) / r.width,
+      my = ((e.clientY - r.top) * H) / r.height;
+    if (mx >= GH.x && mx <= GH.x + GH.w && my >= GH.y && my <= GH.y + GH.h) {
       try {
-        for (var ci = 0; ci < LEVELS.length; ci++) localStorage.removeItem("niu_best_lv" + ci);
-        localStorage.removeItem("niu_best");
-        localStorage.removeItem("niu_clear");
+        window.open("https://github.com/MCapricorns/niu-lai-3d", "_blank");
       } catch (err) {}
-      GS.hs = 0;
-      addShake(3);
       sClick();
-      popText(W / 2 + 90, H / 2 - 30, "已清空·重新开始", "#8aff5a");
       return;
     }
-    if (hitSelectBox(mx, my, SEL_UI.prev)) {
-      selectLevel(GS.selIdx - 1);
-      return;
-    }
-    if (hitSelectBox(mx, my, SEL_UI.next)) {
-      selectLevel(GS.selIdx + 1);
-      return;
-    }
-    var cell = selCellAt(mx, my);
-    if (cell >= 0) {
-      selectLevel(cell);
-      return;
-    }
-    if (hitSelectBox(mx, my, SEL_UI.ai)) {
-      setAIMode(!AI.enabled);
-      return;
-    }
-    if (hitSelectBox(mx, my, SEL_UI.start)) {
-      if (isUnlocked(GS.selIdx)) startLevel(GS.selIdx);
-      else {
-        sWarn();
-        addShake(3);
-        popText(W / 2, H / 2, "先通过上一关解锁!", "#ff8a8a");
-      }
-    }
-  } else if ((GS.state === "play" || GS.state === "bossintro") && hitSelectBox(mx, my, AI_UI)) {
-    setAIMode(!AI.enabled);
-  } else if (GS.state === "gameover" || GS.state === "win") {
+    startGame();
+  } else if (GS.state === "win") {
     GS.state = "title";
     makeSky();
     buildTitle3D();
@@ -6941,6 +5179,7 @@ cv.addEventListener("pointerdown", function (e) {
 window.addEventListener("load", function () {
   initClouds2D();
   initStars2D();
+  applyDPR();
   if (THREE_OK) {
     makeSky();
     buildTitle3D();
