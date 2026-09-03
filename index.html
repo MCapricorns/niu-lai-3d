@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <!--
-  牛来大冒险 3D · I Wanna Be The Ox · v3.1.0
+  牛来大冒险 3D · I Wanna Be The Ox · v4.0.0
   Copyright (c) 2026 MCapricorns — https://github.com/MCapricorns/niu-lai-3d
   代码许可: MIT License (详见 LICENSE 文件)
   文件结构: index.html(骨架) + three.min.js(引擎) + mapengine.js(地图引擎) + levels.js(大地图) + game.js(逻辑)
@@ -96,13 +96,6 @@
         height: 96px;
         background: rgba(255, 190, 60, 0.22);
       }
-      #btnB {
-        right: 126px;
-        bottom: 80px;
-        width: 74px;
-        height: 74px;
-        background: rgba(120, 220, 255, 0.18);
-      }
       #btnP {
         right: 220px;
         bottom: 20px;
@@ -115,7 +108,7 @@
       }
       /*
         竖屏时游戏画面放在顶部，按键在底部划成两个独立手区：
-        左手移动；右手跳跃、冲刺、重击。所有间距都按最窄手机
+        左手移动；右手跳跃、重击。所有间距都按最窄手机
         （320px）保留，避免按钮彼此遮挡或压住选关页。
       */
       /*
@@ -151,13 +144,6 @@
           height: 82px;
           font-size: 21px;
         }
-        #btnB {
-          right: calc(102px + env(safe-area-inset-right));
-          bottom: calc(27px + env(safe-area-inset-bottom));
-          width: 56px;
-          height: 56px;
-          font-size: 16px;
-        }
         #btnP {
           right: calc(12px + env(safe-area-inset-right));
           bottom: calc(112px + env(safe-area-inset-bottom));
@@ -179,11 +165,6 @@
           width: 72px;
           height: 72px;
         }
-        #btnB {
-          right: calc(90px + env(safe-area-inset-right));
-          width: 50px;
-          height: 50px;
-        }
         #btnP {
           right: calc(10px + env(safe-area-inset-right));
           bottom: calc(102px + env(safe-area-inset-bottom));
@@ -198,7 +179,6 @@
     <div id="touch">
       <button class="tbtn" id="btnL" type="button" aria-label="向左移动">◀</button>
       <button class="tbtn" id="btnR" type="button" aria-label="向右移动">▶</button>
-      <button class="tbtn" id="btnB" type="button" aria-label="冲刺">跑</button>
       <button class="tbtn" id="btnJ" type="button" aria-label="跳跃">跳</button>
       <button class="tbtn" id="btnP" type="button" aria-label="坐地重击">坐</button>
     </div>

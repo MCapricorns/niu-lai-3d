@@ -568,7 +568,6 @@ try {
     keys.left = false;
     keys.jump = false;
     justPressed.jump = true;
-    keys.run = false;
     updatePlayer(1 / 60);
     out.bugs.wallKick = { vy: PL.vy, vx: PL.vx };
     keys.right = false;
@@ -588,7 +587,6 @@ try {
     PL.star = 0;
     keys.right = false;
     keys.left = false;
-    keys.run = false;
     keys.jump = false;
     justPressed.jump = true;
     updatePlayer(1 / 60);
@@ -632,7 +630,6 @@ try {
     for (bossFrames = 0; bossFrames < 60 * 20; bossFrames++) {
       if (GS.state === "play") {
         keys.right = true;
-        keys.run = true;
       } else keys.right = false;
       update(1 / 60);
       if (bossFrames % 240 === 0) bossTrace.push(bossFrames + ":" + GS.state + " x" + Math.round(PL.x));
@@ -717,7 +714,7 @@ try {
     render();
     syncTouchControls();
     var shownInPlay = td.classList.contains("is-active");
-    var ids = ["btnL", "btnR", "btnB", "btnJ", "btnP"];
+    var ids = ["btnL", "btnR", "btnJ", "btnP"];
     var boxes = ids.map(function (id) {
       var b = document.getElementById(id).getBoundingClientRect();
       return { id: id, left: b.left, top: b.top, right: b.right, bottom: b.bottom, width: b.width, height: b.height };
