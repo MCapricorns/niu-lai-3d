@@ -1,190 +1,126 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
-    <!--
-  牛来大冒险 3D · I Wanna Be The Ox · v4.0.0
-  Copyright (c) 2026 MCapricorns — https://github.com/MCapricorns/niu-lai-3d
-  代码许可: MIT License (详见 LICENSE 文件)
-  文件结构: index.html(骨架) + three.min.js(引擎) + mapengine.js(地图引擎) + levels.js(大地图) + game.js(逻辑)
--->
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>牛来大冒险 3D · NIU LAI 3D</title>
-    <link rel="preconnect" href="https://fonts.loli.net" crossorigin />
-    <link rel="stylesheet" href="https://fonts.loli.net/css2?family=ZCOOL+KuaiLe&display=swap" />
-    <style>
-      html,
-      body {
-        margin: 0;
-        padding: 0;
-        background: #0a0a12;
-        height: 100%;
-        overflow: hidden;
-        font-family: "ZCOOL KuaiLe", "Yuanti SC", "Microsoft YaHei", system-ui, sans-serif;
-      }
-      #wrap {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      canvas {
-        display: block;
-        max-width: 100vw;
-        max-height: 100vh;
-        aspect-ratio: 16/10;
-        width: 100%;
-        height: auto;
-      }
-      #touch {
-        position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        display: none;
-        pointer-events: none;
-        z-index: 10;
-        opacity: 0;
-        visibility: hidden;
-        transition:
-          opacity 120ms ease,
-          visibility 120ms ease;
-      }
-      #touch.touch-enabled {
-        display: block;
-      }
-      #touch.touch-enabled.is-active {
-        opacity: 1;
-        visibility: visible;
-      }
-      .tbtn {
-        pointer-events: auto;
-        position: absolute;
-        bottom: 14px;
-        width: 88px;
-        height: 88px;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.14);
-        border: 2px solid rgba(255, 255, 255, 0.35);
-        color: #fff;
-        font-size: 22px;
-        font-weight: bold;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        user-select: none;
-        -webkit-user-select: none;
-        touch-action: none;
-        text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
-        z-index: 11;
-        box-sizing: border-box;
-        padding: 0;
-        font-family: inherit;
-        -webkit-tap-highlight-color: transparent;
-      }
-      #btnL {
-        left: 14px;
-      }
-      #btnR {
-        left: 118px;
-      }
-      #btnJ {
-        right: 14px;
-        bottom: 20px;
-        width: 96px;
-        height: 96px;
-        background: rgba(255, 190, 60, 0.22);
-      }
-      #btnP {
-        right: 220px;
-        bottom: 20px;
-        width: 78px;
-        height: 78px;
-        background: rgba(255, 200, 120, 0.2);
-      }
-      .tbtn:active {
-        background: rgba(255, 255, 255, 0.35);
-      }
-      /*
-        竖屏时游戏画面放在顶部，按键在底部划成两个独立手区：
-        左手移动；右手跳跃、重击。所有间距都按最窄手机
-        （320px）保留，避免按钮彼此遮挡或压住选关页。
-      */
-      /*
-        按视口尺寸而不是 pointer: coarse 判断：少数 Chromium WebView
-        会启用触摸事件却仍报告 fine pointer，按几何条件才能稳定避开重叠。
-      */
-      @media (max-width: 600px) and (orientation: portrait) {
-        #wrap {
-          align-items: flex-start;
-          box-sizing: border-box;
-          padding-top: max(12px, env(safe-area-inset-top));
-        }
-        canvas {
-          width: 100vw;
-          max-height: none;
-        }
-        .tbtn {
-          bottom: calc(18px + env(safe-area-inset-bottom));
-          width: 64px;
-          height: 64px;
-          font-size: 19px;
-        }
-        #btnL {
-          left: calc(12px + env(safe-area-inset-left));
-        }
-        #btnR {
-          left: calc(88px + env(safe-area-inset-left));
-        }
-        #btnJ {
-          right: calc(12px + env(safe-area-inset-right));
-          bottom: calc(18px + env(safe-area-inset-bottom));
-          width: 82px;
-          height: 82px;
-          font-size: 21px;
-        }
-        #btnP {
-          right: calc(12px + env(safe-area-inset-right));
-          bottom: calc(112px + env(safe-area-inset-bottom));
-          width: 56px;
-          height: 56px;
-          font-size: 16px;
-        }
-      }
-      @media (max-width: 320px) and (orientation: portrait) {
-        .tbtn {
-          width: 56px;
-          height: 56px;
-        }
-        #btnR {
-          left: calc(76px + env(safe-area-inset-left));
-        }
-        #btnJ {
-          right: calc(10px + env(safe-area-inset-right));
-          width: 72px;
-          height: 72px;
-        }
-        #btnP {
-          right: calc(10px + env(safe-area-inset-right));
-          bottom: calc(102px + env(safe-area-inset-bottom));
-          width: 50px;
-          height: 50px;
-        }
-      }
-    </style>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#14243a" />
+    <meta
+      name="description"
+      content="风暴击碎了星铃。跟着牛来闯过五个世界、二十五幕立体关卡，也可以观看 AI 自动闯关。"
+    />
+    <title>牛来大冒险 3D · 失落的星铃</title>
+    <link rel="stylesheet" href="journey.css?v=5.0.0" />
   </head>
   <body>
-    <div id="wrap"><canvas id="cv" width="960" height="600"></canvas></div>
-    <div id="touch">
-      <button class="tbtn" id="btnL" type="button" aria-label="向左移动">◀</button>
-      <button class="tbtn" id="btnR" type="button" aria-label="向右移动">▶</button>
-      <button class="tbtn" id="btnJ" type="button" aria-label="跳跃">跳</button>
-      <button class="tbtn" id="btnP" type="button" aria-label="坐地重击">坐</button>
-    </div>
+    <main id="game" data-mode="title">
+      <canvas id="journey-canvas" tabindex="-1" aria-label="牛来大冒险 3D 游戏画面"></canvas>
+      <header class="hud-top">
+        <div class="hud-stage">
+          <p id="stage-name"></p>
+          <progress id="stage-progress" max="100" value="0" aria-label="关卡进度"></progress>
+        </div>
+        <div class="hud-totals" aria-label="本关收集与失误">
+          <div class="counter">
+            <span class="coin-symbol" aria-hidden="true"></span><span id="coin-count">0</span
+            ><span class="sr-only">金币</span>
+          </div>
+          <div class="counter">
+            <span class="star-symbol" aria-hidden="true">✦</span><span id="star-count">0</span
+            ><span class="sr-only">星星</span>
+          </div>
+          <div class="counter relay-counter" title="点亮全部信标即可开启星门">
+            <span class="relay-symbol" aria-hidden="true"></span><span id="relay-count">0/2</span>
+            <span class="sr-only">信标</span>
+          </div>
+          <div class="counter misses"><span id="death-count">0</span><span>失误</span></div>
+        </div>
+      </header>
+      <div class="hud-actions">
+        <button id="mute" class="utility" type="button" aria-pressed="false">声音开</button>
+        <button id="pause" class="utility" type="button">暂停</button>
+      </div>
+      <div id="ai-controls" class="ai-controls" hidden>
+        <span id="ai-label">AI 演示中</span>
+        <button id="take-control" class="secondary" type="button">接管</button>
+      </div>
+
+      <div id="status" class="status" role="status"></div>
+      <button id="return-relay" class="secondary goal-retry" type="button" hidden>返回寻找信标</button>
+      <div class="hud-bottom">
+        <p id="stage-tip"></p>
+        <p class="keys"><kbd>WASD</kbd> 移动 <kbd>空格</kbd> 跳跃 <kbd>R</kbd> 重试</p>
+      </div>
+      <div class="touch-controls" aria-label="触屏操作">
+        <button id="touch-move" type="button" aria-label="拖动控制移动"><span></span></button>
+        <button id="touch-jump" type="button" aria-label="跳跃">跳</button>
+      </div>
+
+      <div class="scrim">
+        <section id="title-panel" class="panel title-panel" aria-labelledby="game-title">
+          <span class="version">v5.0.0</span>
+          <h1 id="game-title">牛来大冒险 <span>3D</span></h1>
+          <p class="story-name">失落的星铃</p>
+          <p>风暴击碎了星铃。沿着五个世界的星光，帮牛来把黎明带回山谷。</p>
+          <div class="menu-actions">
+            <button id="start" class="primary" type="button">开始冒险</button>
+            <button id="stage-select" class="secondary" type="button">选择关卡</button>
+            <button id="ai-start" class="secondary" type="button">AI 演示</button>
+          </div>
+          <p class="control-guide">
+            <span class="keyboard-guide">WASD 或方向键移动 · 空格跳跃</span
+            ><span class="touch-guide">左手拖动 · 右手跳跃</span><br />按住跳得更高，空中再按可二段跳。
+          </p>
+          <p id="loading-error" role="alert" hidden></p>
+        </section>
+        <section id="select-panel" class="panel" aria-labelledby="select-title" hidden>
+          <h2 id="select-title">选择关卡</h2>
+          <div id="chapter-tabs" class="chapter-tabs" role="group" aria-label="选择世界"></div>
+          <div id="stage-list" class="stage-list"></div>
+          <button class="secondary home" type="button">返回标题</button>
+        </section>
+        <section id="pause-panel" class="panel" role="dialog" aria-modal="true" aria-labelledby="pause-title" hidden>
+          <h2 id="pause-title">已暂停</h2>
+          <div class="menu-actions">
+            <button id="resume" class="primary" type="button">继续冒险</button>
+            <button id="restart" class="secondary" type="button">从检查点重试</button>
+            <button class="secondary home" type="button">返回标题</button>
+          </div>
+        </section>
+        <section
+          id="story-panel"
+          class="panel story-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="story-title"
+          hidden
+        >
+          <p id="story-kicker" class="story-kicker"></p>
+          <h2 id="story-title"></h2>
+          <p id="story-speaker" class="story-speaker"></p>
+          <p id="story-text"></p>
+          <button id="story-continue" class="primary" type="button">继续</button>
+        </section>
+        <section id="clear-panel" class="panel" role="dialog" aria-modal="true" aria-labelledby="clear-title" hidden>
+          <h2 id="clear-title">关卡完成</h2>
+          <p id="clear-summary"></p>
+          <div class="menu-actions">
+            <button id="next-stage" class="primary" type="button">下一关</button>
+            <button id="replay" class="secondary" type="button">再玩本关</button>
+            <button class="secondary home" type="button">返回标题</button>
+          </div>
+        </section>
+      </div>
+    </main>
     <script src="three.min.js"></script>
-    <script src="mapengine.js"></script>
-    <script src="levels.js"></script>
-    <script src="game.js"></script>
+    <script src="models.js?v=5.0.0"></script>
+    <script src="story.js?v=5.0.0"></script>
+    <script src="stages.js?v=5.0.0"></script>
+    <script src="expedition.js?v=5.0.0"></script>
+    <script src="highlands.js?v=5.0.0"></script>
+    <script src="campaign.js?v=5.0.0"></script>
+    <script src="platformer.js?v=5.0.0"></script>
+    <script src="autoplay.js?v=5.0.0"></script>
+    <script src="journey-renderer.js?v=5.0.0"></script>
+    <script src="journey.js?v=5.0.0"></script>
   </body>
 </html>

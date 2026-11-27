@@ -1,15 +1,17 @@
 {
   "name": "niu-lai-3d",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "private": true,
-  "description": "A zero-runtime-dependency Three.js IWBTG-style precision platformer.",
+  "description": "A story-driven 3D platformer with 25 acts across five worlds.",
   "scripts": {
-    "format": "prettier --write game.js levels.js mapengine.js tests/e2e.mjs index.html README.md",
-    "format:check": "prettier --check game.js levels.js mapengine.js tests/e2e.mjs index.html README.md",
-    "lint": "eslint game.js levels.js mapengine.js tests/e2e.mjs",
+    "format": "prettier --write models.js story.js stages.js expedition.js highlands.js campaign.js platformer.js autoplay.js journey-renderer.js journey.js tests/*.mjs index.html journey.css README.md",
+    "format:check": "prettier --check models.js story.js stages.js expedition.js highlands.js campaign.js platformer.js autoplay.js journey-renderer.js journey.js tests/*.mjs index.html journey.css README.md",
+    "lint": "eslint models.js story.js stages.js expedition.js highlands.js campaign.js platformer.js autoplay.js journey-renderer.js journey.js tests/*.mjs",
     "check": "npm run format:check && npm run lint",
     "test:e2e": "node tests/e2e.mjs",
-    "test": "npm run test:e2e"
+    "test": "npm run test:routes && npm run test:ai && npm run test:e2e",
+    "test:routes": "node tests/journey-routes.mjs",
+    "test:ai": "node tests/autoplay.mjs"
   },
   "devDependencies": {
     "eslint": "10.9.1",
